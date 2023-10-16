@@ -48,7 +48,7 @@ materiały do nauki języka R:
 
  * wprowadzenie do R http://cran.r-project.org/doc/manuals/R-intro.html
  * opis języka http://cran.r-project.org/doc/manuals/R-lang.html
- 
+ aaaaaaaaaaaa
 ```{r, eval=FALSE}
 # korzystanie z pomocy:
 # ?help.start()
