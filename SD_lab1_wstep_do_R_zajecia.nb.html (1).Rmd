@@ -261,9 +261,10 @@ head(flights[, .(distance, air_time, avg_air_speed)])
 flights[, .(N = .N, mean_delay_arr = mean(arr_delay), mean_delay_dep = mean(dep_delay)), 
         by = .(origin, dest)]
 
-flights[, .N, by = .(origin)]
+flights[, .N,  by = .(origin)]
 
 # proszę policzyć średnie czasy przelotu z JFK do LAX dla poszczególnych przewoźników (kolumna carrier)
+flights[dest == "LAX" & origin == "JFK", .(mean_air_time = mean(air_time)),  by = .(carrier)]
 ```
 
 
