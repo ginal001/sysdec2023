@@ -45,12 +45,17 @@ https://drive.google.com/file/d/1vPazSBSVSOGq3yCKvmFqueb1AO4jfYNi/view?usp=shari
 # Wczytujemy dane:
 dataSet <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
                              sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
+
+head(dataSet)
+
 setnames(dataSet, c("diagnosis",
                     paste(c(rep("mean",10), rep("SE",10), rep("worst",10)),
                           rep(c("radius", "texture", "perimeter", "area",
                                 "smoothness", "compactness", "concavity",
                                 "concave_points", "symmetry", "fractal_dimension"),3),
                           sep="_")))
+
+head(dataSet)
 
 # wymiar danych:
 dim(dataSet)
