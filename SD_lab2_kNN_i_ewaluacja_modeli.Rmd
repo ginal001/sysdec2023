@@ -21,12 +21,12 @@ library(data.table)
 library(class)
 library(kknn)
 library(e1071)
+library(ggplot2)
 library(caret)
 library(proxy)
 library(mlr3)
 library(mlr3learners)
 library(ROCR)
-library(ggplot2)
 library(plotly)
 ```
 
