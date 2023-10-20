@@ -1,0 +1,272 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+subtitle: "Laboratorium 2 - algorytm k-NN i ewaluacja modeli ML"
+author: Andrzej Janusz
+email: ap.janusz@uw.edu.pl
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 10
+    rows.print: 10
+    toc: true
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r setup, include=FALSE}
+options(width = 120)
+library(data.table)
+library(class)
+library(kknn)
+library(e1071)
+library(caret)
+library(proxy)
+library(mlr3)
+library(mlr3learners)
+library(ROCR)
+library(ggplot2)
+library(plotly)
+```
+
+## Wizualizacja tabelarycznych zbiorów danych
+
+Wczytajmy przykładową tabelkę z danymi -- zbiór danych WDBC. Dane te zawierają charakterystyki opisujące obrazy jąder komórkowych pobranych z guza znalezionego w piersi kobiet poddawanych badaniu. Ostatnia kolumna tabelki zawiera informację, czy badane komórki są guzem złośliwym ( _M = malignant_ ), czy nie _B = benign_ .
+
+Więcej szczegółów na temat tego zbioru można znaleźć np. tutaj:
+https://datahub.io/machine-learning/wdbc
+
+Zbiór danych jest dostępny tutaj:
+https://drive.google.com/file/d/1vPazSBSVSOGq3yCKvmFqueb1AO4jfYNi/view?usp=sharing
+
+
+```{r data_load}
+# Wczytujemy dane:
+dataSet <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
+                             sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
+setnames(dataSet, c("diagnosis",
+                    paste(c(rep("mean",10), rep("SE",10), rep("worst",10)),
+                          rep(c("radius", "texture", "perimeter", "area",
+                                "smoothness", "compactness", "concavity",
+                                "concave_points", "symmetry", "fractal_dimension"),3),
+                          sep="_")))
+
+# wymiar danych:
+dim(dataSet)
+str(dataSet)
+
+# rozkład diagnoz:
+dataSet[, table(diagnosis)] # klasa 'B' jest bardziej liczna
+```
+
+Aby zwizualizować sobie dane wielowymiarowe konieczne jest zrzutowanie ich na przestrzeń o mniejszym wymiarze (2D lub 3D). Jednym z najprostrzych sposobów jest wykorzystanie w tym celu techniki _PCA_ (analiza składowych głównych). 
+
+```{r pca,  fig.height = 8, fig.width = 10}
+# obliczanie PCA
+pca <- prcomp(dataSet[, -1], center=TRUE, scale=TRUE)
+
+names(pca)
+
+# sdev to wartości własne macierzy kowariancji kolumn 
+# i równocześnie odchylenia standardowe w kierunkach 
+# odpowiadających im wektorów własnych:
+head(pca$sdev)
+
+# macierz wektorów własnych:
+head(pca$rotation)[, 1:5]
+
+# dane przetransformowane do nowej przestrzeni:
+head(pca$x)[, 1:5]
+
+# możemy zwizualizować dane w podprzestrzeni odpowiadającej dwóm pierwszym wektorom własnym:
+fig1 <- ggplot(data.table(pca$x), aes(x=PC1, y=PC2, colour = dataSet[, diagnosis])) +
+  geom_point(aes(shape = dataSet[, diagnosis]), size = 1) + 
+  labs(x = "PC1", y = "PC2", colour = "diagnoza", shape = "diagnoza", title = "Wizualizacja danych WDBC - PCA")
+ggplotly(fig1)
+```
+
+## Algorytm K najbliższych sąsiadów
+
+Klasyfikator k-NN należy do grupy modeli 'leniwych'. Przydziela on etykietę dla testowanego obiektu na podstawie rozkładu etykiet wśród obiektów z najbliższego otoczenia.
+
+```{r K_NN, fig.height = 8, fig.width = 10}
+# Podzielmy dane na dwa zbiory:
+training_idxs <- sample(1:nrow(dataSet), round(3*(nrow(dataSet)/5)))
+trainingSet <- dataSet[training_idxs, -1]
+testSet <- dataSet[-training_idxs, -1]
+
+clsTr = dataSet[training_idxs, diagnosis]
+clsTe = dataSet[-training_idxs, diagnosis]
+
+# WAŻNE: algorytm k-NN wymaga skalowania danych!
+sd_list <- lapply(trainingSet, sd)
+trainingSet <- trainingSet/sd_list
+testSet <- testSet/sd_list
+
+# po takim przeskalowaniu wszystkie kolumny powinny mieć odchylenie standardowe równe 1:
+summary(sapply(trainingSet, sd))
+
+# policzmyklasyfikację metodą k-NN dla zbioru testowego
+# wykorzystamy implementację z biblioteki 'class':
+predictions = knn(trainingSet, testSet, clsTr, k = 3)
+is(predictions)
+head(predictions)
+# zwizualizujmy wyniki predykcji:
+fig2 <- ggplot(data.table(pca$x[-training_idxs, ]), aes(x=PC1, y=PC2, colour = predictions)) +
+  geom_point(aes(shape = dataSet[-training_idxs, diagnosis]), size = 2) + 
+  labs(x = "PC1", y = "PC2", colour = "przewidziana diagnoza", shape = "prawdziwa diagnoza", title = "Vizualizacja predykcji")
+ggplotly(fig2)
+```
+
+## Miary jakości klasyfikacji
+
+Jak sprawdzić czy nasze predykcje są dobre? Powinniśmy policzyć jakąś miarę jakości predykcji.
+
+```{r evaluation}
+# macierz pomyłek (confusion matrix):
+table(clsTe, predictions)
+
+# miara 'Accuracy':
+mean(as.character(predictions) == as.character(clsTe))
+
+# miara 'balanced accuracy' (średnie accuracy w poszczególnych klasach decyzyjnych):
+confTable <- table(clsTe, predictions)
+mean(diag(confTable)/apply(confTable, 1, sum))
+
+# AUC (pole powierzchni pod krzywą ROC):
+# Krzywa ROC to wykres zależności między 'false positive rate' a 'true positive rate'.
+# 'True positive rate' to P(preds == + | trueCls == +), czyli w przybliżeniu TP/P.
+# 'False positive rate' to P(preds == + | trueCls == -), czyli w przybliżeniu FP/N .
+
+# Tutaj przyda się policzyć z jaką pewnością nasz klasyfikator przypisuje klasę "M".
+predVec <- knn(trainingSet, testSet, clsTr, k = 39, prob = TRUE)
+head(predVec)
+head(attr(predVec, "prob"))
+
+predScore <- numeric(length(predVec))
+predScore[predVec == "M"] <- attr(predVec, "prob")[predVec == "M"]
+predScore[predVec == "B"] <- 1 - attr(predVec, "prob")[predVec == "B"]
+
+# Wykorzystując 'predScore' możemy wygenerować wiele klasyfikacji, np. preds = as.integer(predScore > 0.5)
+
+# Gotowe rozwiązania w R
+?prediction
+?performance
+
+preds <- prediction(predScore, clsTe)
+plot(performance(preds, measure="tpr", x.measure="fpr"), colorize=TRUE)
+slot(performance(preds, measure="auc"), "y.values")
+```
+
+Aby dokładnie oszacować jakość klasyfikacji konieczne jest zazwyczaj wielokrotne powtórzenie procesu 'trenuj/testuj'.
+
+Innym podejściem jest 'weryfikacja krzyżowa' (ang. cross-validation) - zbiór danych dzielimy na _k_ rozłącznych podzbiorów, trenujemy model na
+ _k - 1_ zbiorach i testujemy na k-tym. Czynność powtarzamy k razy, za każdym biorąc inny zbiór do testu.
+Aby dobrze oszacować błąd, całą procedurę weryfikacji krzyżowej powtarza sie kilkakrotnie, z rożnymi podziałami na zbiory.
+Ważna jest przy tym jest stratyfikacja próbek testowych.
+
+#### Zadanie 1: 
+Oszacuj jakość modelu kNN (implementacji z biblioteki '_class_') przy użyciu _weryfikacji krzyżowej_ z podziałem na 10 zbiorów. Możesz w tym celu wykorzystać funkcje _createFolds_ lub _createMultiFolds_ z biblioteki '_caret_'.
+
+```{r task1}
+# funkcja createFolds stratyfikuje dane:
+myFolds <- caret::createFolds(dataSet[, diagnosis], k = 10, list = TRUE, returnTrain = FALSE)
+head(lapply(myFolds, function(x) table(dataSet[x, diagnosis])), 3)
+
+# to jest miejsce na rozwiazanie zadania 1:
+single_CV_iter <- function(idsx, dataS, labels, ...){
+  sd_list <- lapply(dataS[-idsx], sd)
+  trainingSet <- dataS[-idsx,]/sd_list
+  testSet <- dataS[]/sd_list
+  predictions = knn(trainingSet, testSet, labels[-idsx])
+}
+cv_preds <- lapply(myFolds, single_CV_iter_for_knn)
+
+
+```
+
+W R wiele implementacji modeli predykcyjnych ma 'gotowe' implementacje weryfikacji krzyżowej. Są one często zoptymalizowane wydajnościowo pod dany model, więc warto ich używać.
+
+```{r kknn}
+# ewaluacja 'leave-one-out' dla implementacji kNN z biblioteki 'class'
+cvPreds <- knn.cv(scale(dataSet[, -1]), dataSet[, diagnosis], k = 3)
+mean(cvPreds == dataSet[, diagnosis])
+
+# biblioteka kknn - bardziej elastyczna implementacja algorytmu k-NN
+?kknn
+?train.kknn
+
+# nie musimy skalować danych - kknn domyślnie zrobi to za nas
+knnPreds = kknn(diagnosis~., dataSet[training_idxs, ], dataSet[-training_idxs, -1],
+                k = 29, distance = 2, scale = TRUE,
+                kernel = "biweight")
+
+cat("Accuracy on the test set:\t", mean(knnPreds$fitted.values == clsTe), "\n", sep = "")
+table(clsTe, knnPreds$fitted.values)
+
+# inne metody przydatne do tworzenia własnych implementacji k-NN można znaleźć w bibliotece proxy
+?proxy::dist
+summary(pr_DB)
+?pr_DB
+```
+
+#### Zadanie 2:
+Stwórz własną implementację k-NN. Implementacja powinna pozwalać na wyszukiwanie sąsiadów względem dowolnej funkcji odległości. Możesz wykorzystać bibliotekę _proxy_. Oszacuj jakość predykcji algorytmu k-NN z odległością kosinusową dla danych WDBC.
+
+```{r task2}
+# to jest miejsce na rozwiazanie zadania 2:
+
+
+```
+
+## MLR3 - podstawy
+
+Wiele nowoczesnych rozwiązań z zakresu uczenia maszynowego bazuje na obiektowym podejściu do definiowania, trenowania i ewaluacji modeli. Jednym z tego typu rozwiązań w R jest biblioteka '_mlr3_'. Więcej o tej bibliotece można poczytać tutaj: https://mlr3.mlr-org.com/
+
+```{r kknn-mlr}
+# definiujemy zadanie predykcji
+wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
+                             target = "diagnosis")
+wdbc_task
+
+# definiujemy model
+knn_learner <- lrn("classif.kknn", k = 29)
+# możemy sprawdzić aktualne ustawienia parametrów modelu
+knn_learner$param_set
+
+# i je zmodyfikować...
+knn_learner$param_set$values <- list(kernel = "biweight")
+
+# trenujemy model przez wykonanie metody 'train' na zadaniu predykcji
+test_idxs <- setdiff(seq_len(wdbc_task$nrow), training_idxs)
+
+knn_learner$initialize()
+knn_learner$train(wdbc_task, row_ids = training_idxs)
+
+# predykcjia dla nowych danych
+prediction <- knn_learner$predict(wdbc_task, row_ids = test_idxs)
+
+# macierz pomyłek:
+prediction$confusion
+
+# możemy sprawdzić wartości różnych miar jakości
+measure_acc <- msr("classif.acc")
+measure_bac <- msr("classif.bacc")
+
+prediction$score(measure_acc)
+prediction$score(measure_bac)
+
+# możemy też łatwo policzyć weryfikację krzyżową
+CV <- rsmp("cv", folds = 10L)
+rr <- resample(wdbc_task, knn_learner, CV)
+rr$score(measure_acc)
+
+rr$aggregate(measure_acc)
+rr$aggregate(measure_bac)
+```
+
+Innym rozwiązaniem wartym uwagi jest biblioteka _tidymodels_ należąca do _tidyverse_ rozwijanego przez zespół RStudio: https://www.tidymodels.org/    
+
+\  
+\  
