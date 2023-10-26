@@ -180,14 +180,14 @@ myFolds <- caret::createFolds(dataSet[, diagnosis], k = 10, list = TRUE, returnT
 head(lapply(myFolds, function(x) table(dataSet[x, diagnosis])), 3)
 
 # to jest miejsce na rozwiazanie zadania 1:
-single_CV_iter <- function(idsx, dataS, labels, ...){
+single_CV_iter_for_knn <- function(idsx, dataS, labels, ...){
   sd_list <- lapply(dataS[-idsx], sd)
   trainingSet <- dataS[-idsx,]/sd_list
-  testSet <- dataS[]/sd_list
-  predictions = knn(trainingSet, testSet, labels[-idsx])
+  testSet <- dataS[idxs,]/sd_list
+  predictions = knn(trainingSet, testSet, labels[-idsx], ...)
+  predictions
 }
-cv_preds <- lapply(myFolds, single_CV_iter_for_knn)
-
+cv_preds <- lapply(myFolds, single_CV_iter_for_knn, dataSet[, -1], dataSet[, diagnosis])
 
 ```
 
