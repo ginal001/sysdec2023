@@ -66,6 +66,13 @@ Wyjątkiem od powyższej zazady są modele leniwe takie jak k-NN.
 #### Zadanie 2 (z poprzednich zajęć):
 Stwórz własną implementację k-NN. Implementacja powinna pozwalać na wyszukiwanie sąsiadów względem dowolnej funkcji odległości. Możesz wykorzystać bibliotekę _proxy_. Oszacuj jakość predykcji algorytmu k-NN z odległością kosinusową dla danych WDBC.
 
+
+
+```{r zabawa}
+?proxy::dist
+summary 
+```
+
 ```{r task2}
 # metody przydatne przy tworzeniu własnych implementacji k-NN można znaleźć w bibliotece proxy
 ?proxy::dist
@@ -73,7 +80,7 @@ summary(pr_DB)
 ?pr_DB
 
 # przykładowo, możemy łatwo policzyć odległość pierwszego obiektu od pozostałych obiektów w danych:
-dist_vector <- as.numeric(proxy::dist(dataSet[1, !"diagnosis"], dataSet[, !"diagnosis"]))
+dist_vector <- as.numeric(proxy::dist(dataSet[1, !"diagnosis"], dataSet[, !"diagnosis"])) #to juz da wszystkie odleglosci
 # a następnie wybrać indeksy np. siedmiu sąsiadów:
 head(order(dist_vector), 7)
 # funkcja proxy::dist pozwala łatwo wyliczać inne metryki odległości:
@@ -99,6 +106,8 @@ my_knn <- function(ref_data, test_data, rev_classes, k = 7, metric = "Euclidean"
 }
 
 # sprawdź, że powyższa funkcja rzeczywiście działa
+
+my_knn(dataSet[-1, !"diagnosis"], dataSet[1, ], )
 
 ```
 
