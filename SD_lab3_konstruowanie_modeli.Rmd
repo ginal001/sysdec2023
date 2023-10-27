@@ -123,6 +123,8 @@ Wiele nowoczesnych rozwiązań z zakresu uczenia maszynowego bazuje na obiektowy
 # definiujemy nowe zadanie predykcji
 wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
                              target = "diagnosis")
+
+
 wdbc_task
 
 # definiujemy znany już nam model z biblioteki kknn
@@ -193,6 +195,11 @@ Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jak
 
 ```{r task1}
 # to jest miejsce na rozwiazanie zadania 1:
+wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
+                             target = "diagnosis")
+knn_learner <- lrn("classif.kknn", k = 29)
+training_set_idxs <- sort(sample(nrow(dataSet), floor(nrow(dataSet)*0.7)))
+
 
 
 ```
