@@ -1,0 +1,197 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+author: "Andrzej Janusz"
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 10
+    rows.print: 10
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+subtitle: Laboratorium 3 - konstruowanie modeli predykcyjnych
+email: ap.janusz@uw.edu.pl
+---
+
+```{r setup, include=FALSE}
+options(width = 120)
+library(data.table)
+library(mlr3)
+library(mlr3learners)
+library(proxy)
+library(ggplot2)
+library(plotly)
+```
+
+## Plan
+
+0. Dokończenie zadania z poprzednich zajęć.
+1. Biblioteka _mlr3_ - podstawy.
+2. Konstrukcja i ewaluacja podstawowych modeli przedykcyjnych w _mlr3_..
+
+
+Rozpocznijmy od wczytania przykładowego zbioru danych - tego samego co na poprzednich zajęciach.
+
+Zbiór danych jest dostępny tutaj:
+https://drive.google.com/file/d/1vPazSBSVSOGq3yCKvmFqueb1AO4jfYNi/view?usp=sharing
+
+
+```{r data_load, echo=TRUE}
+# Wczytujemy dane:
+dataSet <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
+                             sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
+setnames(dataSet, c("diagnosis",
+                    paste(c(rep("mean",10), rep("SE",10), rep("worst",10)),
+                          rep(c("radius", "texture", "perimeter", "area",
+                                "smoothness", "compactness", "concavity",
+                                "concave_points", "symmetry", "fractal_dimension"),3),
+                          sep="_")))
+
+# wymiar danychAAA:
+
+dim(dataSet)
+head(dataSet)
+
+# rozkład diagnoz:
+dataSet[, .N, by = diagnosis] # klasa 'B' jest bardziej liczna
+```
+
+Modele predykcyjne w R mogą być tworzone na wiele różnych sposobów. Biblioteki zawierające implementacje algorytmów konstruowania modeli najczęściej dostarczają osobne implementacje metod trenowania modelu oraz inferencji, która najcześciej wykonywana jest za pomocą metody _predict_.
+
+## Ponownie k-NN
+
+Wyjątkiem od powyższej zazady są modele leniwe takie jak k-NN. 
+
+#### Zadanie 2 (z poprzednich zajęć):
+Stwórz własną implementację k-NN. Implementacja powinna pozwalać na wyszukiwanie sąsiadów względem dowolnej funkcji odległości. Możesz wykorzystać bibliotekę _proxy_. Oszacuj jakość predykcji algorytmu k-NN z odległością kosinusową dla danych WDBC.
+
+```{r task2}
+# metody przydatne przy tworzeniu własnych implementacji k-NN można znaleźć w bibliotece proxy
+?proxy::dist
+summary(pr_DB)
+?pr_DB
+
+# przykładowo, możemy łatwo policzyć odległość pierwszego obiektu od pozostałych obiektów w danych:
+dist_vector <- as.numeric(proxy::dist(dataSet[1, !"diagnosis"], dataSet[, !"diagnosis"]))
+# a następnie wybrać indeksy np. siedmiu sąsiadów:
+head(order(dist_vector), 7)
+# funkcja proxy::dist pozwala łatwo wyliczać inne metryki odległości:
+proxy::dist(dataSet[1:3, !"diagnosis"], dataSet[1:10, !"diagnosis"], method = "Canberra")
+
+# przykładowe rozwiazanie zadania 1:
+# pamiętaj o skalowaniu danych!
+my_knn <- function(ref_data, test_data, rev_classes, k = 7, metric = "Euclidean") {
+  
+  vote <- function(x, classes, k) {
+    nns <- order(x)[1:k]
+    class_counts <- table(classes[nns])
+    names(class_counts)[which.max(class_counts)]
+  }
+  
+  min_list <- lapply(ref_data, min)
+  scale_list <- lapply(ref_data, function(x) max(x) - min(x))
+  ref_data <- (ref_data - min_list)/scale_list
+  test_data <- (test_data - min_list)/scale_list
+  
+  dist_matrix <- as.matrix(proxy::dist(test_data, ref_data), method = metric)
+  apply(dist_matrix, 1, vote, rev_classes, k)
+}
+
+# sprawdź, że powyższa funkcja rzeczywiście działa
+
+```
+
+## MLR3 - podstawy
+
+W głównym oficjalnym repozytorum R - __R-CRAN__: https://cran.r-project.org/index.html znajduje się obecnie ponad 16500 dodatkowych bibliotek. Wiele z nich implementuje różnorodne modele ML, a także metody ich ewaluacji, czy wizualizacji danych. Tak wielkie bogactwo metod i implementacji powoduje kłopot z określeniem wspólnego interfejsu pozwalającego na ich wykorzystanie.
+
+Wiele nowoczesnych rozwiązań z zakresu uczenia maszynowego bazuje na obiektowym podejściu do definiowania, trenowania i ewaluacji modeli. Jednym z najciekawszych (a za razem najnowszych i aktywnie rozwijanych) tego typu rozwiązań w R jest biblioteka '_mlr3_'. Więcej informacji na jej temat można znaleźć na stronie: https://mlr3.mlr-org.com/
+
+
+
+```{r kknn-mlr3}
+# definiujemy nowe zadanie predykcji
+wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
+                             target = "diagnosis")
+wdbc_task
+
+# definiujemy znany już nam model z biblioteki kknn
+knn_learner <- lrn("classif.kknn", k = 29)
+# możemy sprawdzić aktualne ustawienia parametrów modelu
+knn_learner$param_set
+
+# i je zmodyfikować...
+knn_learner$param_set$values <- list(kernel = "biweight", k = 29)
+knn_learner$param_set
+
+# trenujemy model przez wywołanie metody 'train' na zadaniu predykcji
+training_set_idxs <- sort(sample(nrow(dataSet), floor(nrow(dataSet)*0.7)))
+test_set_idxs <- setdiff(seq_len(wdbc_task$nrow), training_set_idxs)
+
+knn_learner$initialize()
+knn_learner$train(wdbc_task, row_ids = training_set_idxs)
+
+# predykcjia dla nowych danych
+prediction <- knn_learner$predict(wdbc_task, row_ids = test_set_idxs)
+
+# w wyniku dostajemy szereg informacji dotyczących jakości rozwiązania, np. macierz pomyłek:
+prediction$confusion
+
+# możemy sprawdzić wartości różnych miar jakości
+mlr_measures
+measure_acc <- msr("classif.acc")
+measure_bac <- msr("classif.bacc")
+
+measures <- msrs(c("classif.bacc", "classif.acc"))
+
+prediction$score(measure_acc)
+prediction$score(measure_bac)
+prediction$score(measures)
+
+# możemy też łatwo policzyć weryfikację krzyżową
+CV <- rsmp("cv", folds = 10L)
+rr <- resample(wdbc_task, knn_learner, CV)
+rr$score(measures)
+
+rr$aggregate(measures)
+```
+
+Wielką zaletą budowania modeli przy użyciu biblioteki _mlr3_ jest ustandaryzowany interfejs pozwalający na budowę dowolnego wspieranego modelu w dokładnie ten sam sposób. Lista wspieranych modeli jest już dość duża i ciągle się powiększa. Przykładowe modele można znaleźć w bibliotece _mlr3learners_.
+
+```{r mlr3-learners, warning=FALSE}
+# możemy wypisać modele dostępne w mlr3learners
+mlr_learners
+
+# inny model budujemy dokładnie tak samo jak poprzednio...
+tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
+tree_learner$param_set
+
+# trenowanie i ewaluacja
+tree_learner$train(wdbc_task, row_ids = train_set)
+prediction <- tree_learner$predict(wdbc_task, row_ids = test_set)
+prediction$score(measures)
+
+# model
+tree_learner$model
+rpart.plot::rpart.plot(tree_learner$model, type = 2, digits = 2, tweak = 1.0,
+                       main = 'drzewo decyzyjne')
+
+```
+
+#### Zadanie 1: 
+Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jakość predykcji wykorzystując pakiet _mlr3_. Sprawdź różne techniki ewaluacji modeli ( _CV_, _bootstrapping_, _holdout_ ). Jak wybrać dobre wartości hiperparametrów modeli?
+
+```{r task1}
+# to jest miejsce na rozwiazanie zadania 1:
+
+
+```
+
+Inną zaletą _mlr3_ jest możliwość tworzenia w jednolity sposób modeli dla różnego typu zadań. Przykładowo, konstruując model regresyjny wystarczy zdefiniować innego typu _Task_ oraz wybrać odpowiedni typ modelu definiując _Learner_.
+
+\  
+\  
