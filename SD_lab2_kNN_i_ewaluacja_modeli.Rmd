@@ -15,7 +15,7 @@ output:
     toc: true
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include = FALSE}
 options(width = 120)
 library(data.table)
 library(class)
@@ -30,7 +30,7 @@ library(ROCR)
 library(plotly)
 ```
 
-## Wizualizacja tabelarycznych zbiorów danych
+## Wizualizacja tabelarycznych zbiorów danycH
 
 Wczytajmy przykładową tabelkę z danymi -- zbiór danych WDBC. Dane te zawierają charakterystyki opisujące obrazy jąder komórkowych pobranych z guza znalezionego w piersi kobiet poddawanych badaniu. Ostatnia kolumna tabelki zawiera informację, czy badane komórki są guzem złośliwym ( _M = malignant_ ), czy nie _B = benign_ .
 
@@ -41,7 +41,7 @@ Zbiór danych jest dostępny tutaj:
 https://drive.google.com/file/d/1vPazSBSVSOGq3yCKvmFqueb1AO4jfYNi/view?usp=sharing
 
 
-```{r data_load}
+```{r data_load, echo=TRUE}
 # Wczytujemy dane:
 dataSet <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
                              sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
@@ -62,12 +62,13 @@ dim(dataSet)
 str(dataSet)
 
 # rozkład diagnoz:
-dataSet[, table(diagnosis)] # klasa 'B' jest bardziej liczna
+dataSet[,table(diagnosis)] # klasa 'B' jest bardziej liczna
+
 ```
 
 Aby zwizualizować sobie dane wielowymiarowe konieczne jest zrzutowanie ich na przestrzeń o mniejszym wymiarze (2D lub 3D). Jednym z najprostrzych sposobów jest wykorzystanie w tym celu techniki _PCA_ (analiza składowych głównych). 
 
-```{r pca,  fig.height = 8, fig.width = 10}
+```{r, echo=TRUE}
 # obliczanie PCA
 pca <- prcomp(dataSet[, -1], center=TRUE, scale=TRUE)
 

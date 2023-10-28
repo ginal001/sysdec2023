@@ -51,7 +51,7 @@ setnames(dataSet, c("diagnosis",
                                 "concave_points", "symmetry", "fractal_dimension"),3),
                           sep="_")))
 
-# wymiar danychAAA:
+# wymiar danych:
 
 dim(dataSet)
 head(dataSet)
