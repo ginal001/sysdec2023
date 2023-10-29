@@ -101,8 +101,14 @@ my_knn <- function(ref_data, test_data, rev_classes, k = 7, metric = "Euclidean"
   apply(dist_matrix, 1, vote, rev_classes, k)
 }
 
-my_knn(dataSet[-1, !"diagnosis"], dataSet[1, !"diagnosis"], dataSet[-1, "diagnosis"])
-dataSet[1, "diagnosis"]
+#moje
+x <- my_knn(dataSet[-c(1:15), !"diagnosis"], dataSet[c(1:15), !"diagnosis"], dataSet[-c(1:15), "diagnosis"])
+y <- dataSet[c(1:15), diagnosis]
+x
+y
+dataSet[1:3, diagnosis]  #cos istotnego
+#moje
+mean(as.character(x) == as.character(y))
 # sprawdź, że powyższa funkcja rzeczywiście działa
 
 ```
