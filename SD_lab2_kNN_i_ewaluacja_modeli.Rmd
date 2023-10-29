@@ -132,7 +132,6 @@ Jak sprawdzić czy nasze predykcje są dobre? Powinniśmy policzyć jakąś miar
 ```{r evaluation}
 # macierz pomyłek (confusion matrix):
 table(clsTe, predictions)
-
 # miara 'Accuracy':
 mean(as.character(predictions) == as.character(clsTe))
 

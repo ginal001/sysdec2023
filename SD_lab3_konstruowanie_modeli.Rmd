@@ -101,6 +101,8 @@ my_knn <- function(ref_data, test_data, rev_classes, k = 7, metric = "Euclidean"
   apply(dist_matrix, 1, vote, rev_classes, k)
 }
 
+my_knn(dataSet[-1, !"diagnosis"], dataSet[1, !"diagnosis"], dataSet[-1, "diagnosis"])
+dataSet[1, "diagnosis"]
 # sprawdź, że powyższa funkcja rzeczywiście działa
 
 ```
