@@ -25,6 +25,7 @@ library(mlr3learners)
 library(proxy)
 library(ggplot2)
 library(plotly)
+library(rpart)
 ```
 
 ## Plan
@@ -125,6 +126,7 @@ Wiele nowoczesnych rozwiązań z zakresu uczenia maszynowego bazuje na obiektowy
 # definiujemy nowe zadanie predykcji
 wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
                              target = "diagnosis")
+
 wdbc_task
 
 # definiujemy znany już nam model z biblioteki kknn
@@ -161,6 +163,7 @@ prediction$score(measure_bac)
 prediction$score(measures)
 
 # możemy też łatwo policzyć weryfikację krzyżową
+?resample
 CV <- rsmp("cv", folds = 10L)
 rr <- resample(wdbc_task, knn_learner, CV)
 rr$score(measures)
@@ -179,8 +182,8 @@ tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
 tree_learner$param_set
 
 # trenowanie i ewaluacja
-tree_learner$train(wdbc_task, row_ids = train_set)
-prediction <- tree_learner$predict(wdbc_task, row_ids = test_set)
+tree_learner$train(wdbc_task, row_ids = training_set_idxs)
+prediction <- tree_learner$predict(wdbc_task, row_ids = test_set_idxs)
 prediction$score(measures)
 
 # model
@@ -195,6 +198,20 @@ Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jak
 
 ```{r task1}
 # to jest miejsce na rozwiazanie zadania 1:
+bootstrap <- rsmp("bootstrap")
+rr <- resample(wdbc_task, knn_learner, bootstrap)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+holdout <- rsmp("holdout")
+rr <- resample(wdbc_task, knn_learner, holdout)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+
+```
 
 
 ```
