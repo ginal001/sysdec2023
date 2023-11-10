@@ -254,7 +254,6 @@ Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jak
 
 ```{r task1}
 # to jest miejsce na rozwiazanie zadania 1:
-<<<<<<< HEAD
 wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
                              target = "diagnosis")
 knn_learner <- lrn("classif.kknn", k = 29)
@@ -275,7 +274,6 @@ rr$aggregate(measures)
 
 
 ```
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 
 
 ```

@@ -158,6 +158,7 @@ Jednym z najbardziej powszechnie stosowanym modelem predykcyjnym jest __drzewo d
 
 ```{r tree-mlr}
 tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
+tree_learner$param_set
 
 # trenowanie i ewaluacja
 tree_learner$train(wdbc_task, row_ids = trainingIdx)
