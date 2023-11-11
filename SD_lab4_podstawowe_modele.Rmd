@@ -1,0 +1,189 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+subtitle: "Laboratorium 4 - podstawowe modele predykcyjne"
+author: Andrzej Janusz
+email: ap.janusz@uw.edu.pl
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 10
+    rows.print: 10
+    toc: true
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r setup, include=FALSE}
+options(width = 120)
+library(data.table)
+library(mlr3)
+library(mlr3learners)
+library(mlr3tuning)
+library(ggplot2)
+library(plotly)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(glmnet)
+```
+
+## Naive Bayes
+
+Jednym z przykładów prostego model predykcyjnego jest _Naive Bayes_. 
+
+Twierdzenie Bayesa (w najprostszej postaci): $$P(Y|X) = P(Y)*P(X|Y) / P(X)$$
+U nas $X$ to wielowymiarowa zmienna losowa. Pojedynczy obiekt w danych traktujemy jak jej realizację, czyli pojedynczy obiekt to wektor konkretnych wartości $<x_1, ..., x_N>$. Załóżmy, że każda z wartości $x_1, \ldots, x_N$ ma niezerowe prawdopodobieństwo wystąpienia (czyli w uproszczeniu atrybuty mają wartości symboliczne i każda z tych wartości jest możliwa). $Y$ to u nas decyzja (także zmienna losowa).
+
+Przepisujemy twierdzenia Bayesa:
+$$P(Y = y|X = <x_1, \ldots, x_N>) = \frac{P(Y = y)*P(X = <x_1, \ldots, x_N>|Y = y)}{P(X = <x_1, \ldots, x_N>)}$$
+Teraz "naiwnie" zakladamy, że $<x_1, \ldots, x_N>$ odpowiada realizacji $N$ niezależnych zmiennych losowych $X_1, \ldots, X_N$. Dostajemy:
+$$P(Y = y|X = <x_1, \ldots, x_N>) = \frac{P(Y = y)*P(X_1 = x_1|Y = y)* \ldots *P(X_N = x_N|Y = y)}{P(X1 = x_1)* \ldots *P(X_N = x_N)}$$
+Klasyfikator _Naive Bayes_ przypisuje testowanemu obiektowi klasę o najwyższym prawdopodobieństwie a posteriori, czyli tą, dla której iloczyn z licznika powyższego ułamka jest największy. W przypadku, gdy atrybuty przyjmują wartości rzeczywisce (prawdopodobieństwo uzyskania konkretnej wartości jest bliskie 0), wykorzystuje się wartości gęstosci danego rozkładu lub dyskretyzuje dane.
+
+
+```{r data}
+# wczytajmy zabawkowe dane:
+dataPath = 'https://raw.githubusercontent.com/pritomzap/CSV-to-ARFF-converter/master/weather_nominal.csv'
+data_golf = fread(dataPath, header = TRUE, sep = ',', stringsAsFactors = TRUE)
+data_golf
+
+# naprawmy nazwę ostatniej kolumny
+setnames(data_golf, "Play golf", "Play.golf")
+
+# zapisuję wartości decyzji na osobny wektor
+clsVec = data_golf[, Play.golf]
+
+# żeby lepiej kontrolować eksperyment zainicjujmy generator liczb pseudolosowych
+set.seed(123)
+
+# wyznaczmy przykładowy podzbiór treningowy:
+trainingIdx = sample(nrow(data_golf), 7)
+
+# definiujemy nowe zadanie predykcji
+golf_task <- TaskClassif$new(id = "golf_dt", backend = data_golf, 
+                             target = "Play.golf")
+
+# wizualizacja danych
+ggplot(data_golf, aes(x = Play.golf)) + geom_bar(aes(fill = Play.golf))
+```
+
+```{r naive_bayes}
+# stwórzmy model Naive Bayes
+nb_learner <- lrn("classif.naive_bayes")
+# możemy sprawdzić aktualne ustawienia parametrów modelu
+nb_learner$param_set
+nb_learner$param_set$values <- list(laplace = 100)
+
+# manual dla modelu:
+?e1071::naiveBayes
+
+# przetestujmy model
+nb_learner$train(golf_task, row_ids = trainingIdx)
+prediction <- nb_learner$predict(golf_task, 
+                                 row_ids = setdiff(1:nrow(data_golf), trainingIdx))
+
+# macierz pomyłek i dokładność predykcji:
+prediction$confusion
+acc <- msr("classif.acc")
+prediction$score(acc)
+
+# model
+nb_learner$model
+```
+
+## Regresja logistyczna
+
+Innym popularnym modelem predykcyjnym jest regresja logistyczna. W klasycznym podejściu jest to model statystyczny slużący przewidywaniu _binarnej decyzji_. Operuje się w nim pojęciem "szansy" wyrażajacej stosunek prawdopodobieństwa klasy "1" do prawdopodobieństwa klasy "0". 
+$$Odds = \frac{p}{1-p} = e^{\alpha}e^{\beta X}$$
+Logarytm "szansy" wyraża się jako funkcję liniową wartości atrybutów warunkowych. Jest to funkcja _logit_. Parametry modelu $\alpha, \beta$ optymalizuje sie wykorzystując dane treningowe, np. metodą _najmniejszych kwadratów_, _największej wiarygodności_ lub metodą _schodzenia po gradiencie_.
+
+```{r data_wdbc}
+# Wczytujemy dane:
+data_wdbc <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
+                               sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
+setnames(data_wdbc, c("diagnosis",
+                      paste(c(rep("mean",10), rep("SE",10), rep("worst",10)),
+                            rep(c("radius", "texture", "perimeter", "area",
+                                  "smoothness", "compactness", "concavity",
+                                  "concave_points", "symmetry", "fractal_dimension"),3),
+                            sep="_")))
+
+# tak jak wczesniej, podzielmy dane na dwa zbiory:
+set.seed(123)
+trainingIdx = sample(nrow(data_wdbc), round(3*(nrow(data_wdbc)/5)))
+
+# definiujemy nowe zadanie predykcji
+wdbc_task <- TaskClassif$new(id = "wdbc_dt", backend = data_wdbc, 
+                             target = "diagnosis")
+```
+
+```{r glm-mlr}
+# ponownie definiujemy model
+glm_learner <- lrn("classif.cv_glmnet")
+
+# trenujemy model 
+glm_learner$train(wdbc_task, row_ids = trainingIdx)
+
+# predykcjia dla nowych danych
+prediction <- glm_learner$predict(wdbc_task, row_ids = setdiff(1:nrow(data_wdbc), trainingIdx))
+# macierz pomyłek i dokładność predykcji:
+prediction$confusion
+acc <- msr("classif.acc")
+prediction$score(acc)
+
+# model
+coef(glm_learner$model)
+model_coefficients <- coef(glm_learner$model)[colnames(data_wdbc)[-1], ]
+
+# mozemy go zwizualizowac w pierwszych dwoch PC
+pca <- prcomp(data_wdbc[, -1, with = FALSE], center = TRUE, scale = TRUE)
+
+lineIn2PCs = (cbind(rep(1, 30), pca$rotation) %*% c(coef(glm_learner$model)[1], model_coefficients))[1:3]
+plot(pca$x[, 1:2], col=data_wdbc[, as.integer(diagnosis)] + 1, 
+     pch=data_wdbc[, as.character(diagnosis)], cex=0.7, 
+     main="WDBC data in 2 principal components")
+abline(coef = c(lineIn2PCs[1]/lineIn2PCs[3], lineIn2PCs[2]/lineIn2PCs[3]),
+       col = 'blue', lwd = 2)
+```
+
+## Drzewa decyzyjne
+
+Jednym z najbardziej powszechnie stosowanym modelem predykcyjnym jest __drzewo decyzyjne__. Przykłady algorytmów konstruowania drzew decyzyjnych to _ID3_, _CART_ oraz _C5.0_ (i nowsze wersje). Najczęściej konstruowanie drzewa decyzyjnego dzieli sie na dwie fazy. W pierwszej generuje się wstępne drzewo przez rekursywne wybieranie najlepszego podzialu danych (tzw. cięcia) na pojedynczym atrybucie. W drugiej fazie upraszcza się drzewo przez '_przycinanie_' (ang. pruning) węzłów, które nie przyczyniają się znacząco do redukcji liczby popełnianych błędów. Najczęściej wykorzystywanymi miarami jakości cięcia na atrybucie są:
+
+ - information gain (bazuje na entropii) -- wartość oczekiwana redukcji entropii decyzji po wykonaniu cięcia,
+ - gini gain -- wartość oczekiwana redukcji prawdopodobieństwa popełnienia błędu przy losowaniu decyzji zgodnie z rozkladami z liści,
+ - discernibility gain -- liczba par obiektów z różnych klas decyzyjnych, które rozróżni dane cięcie.
+
+```{r tree-mlr}
+tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
+tree_learner$param_set
+
+# trenowanie i ewaluacja
+tree_learner$train(wdbc_task, row_ids = trainingIdx)
+prediction <- tree_learner$predict(wdbc_task, row_ids = setdiff(1:nrow(data_wdbc), trainingIdx))
+prediction$confusion
+acc <- msr("classif.acc")
+prediction$score(acc)
+
+# model
+tree_learner$model
+rpart.plot(tree_learner$model, type = 2, digits = 2, tweak = 1.0, roundint=FALSE,
+           main = 'drzewo decyzyjne')
+```
+
+## Zadanie
+
+Proszę spróbować znaleźć optymalne wartości hiperparametrów omówionych dzisiaj modeli dla danych _wdbc_. Proszę spróbować wykorzystać w tym zadanu pakiet _mlr3tuning_.
+
+```{r task}
+# to jest miejsce na rozwiazanie zadania:
+
+
+```
+
+\  
+\  
+ 
+ 
