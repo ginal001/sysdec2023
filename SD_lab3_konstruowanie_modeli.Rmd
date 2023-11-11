@@ -210,6 +210,18 @@ rr$score(measures)
 
 rr$aggregate(measures)
 
+bootstrap <- rsmp("bootstrap")
+rr <- resample(wdbc_task, tree_learner, bootstrap)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+holdout <- rsmp("holdout")
+rr <- resample(wdbc_task, tree_learner, holdout)
+rr$score(measures)
+
+rr$aggregate(measures)
+
 
 ```
 
