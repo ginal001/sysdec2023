@@ -1,33 +1,18 @@
 ---
 title: "Systemy Decyzyjne 2023/2024"
-<<<<<<< HEAD
 subtitle: "Laboratorium 3 - konstruowanie modeli predykcyjnych"
 author: Andrzej Janusz
 email: ap.janusz@uw.edu.pl
-=======
-author: "Andrzej Janusz"
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 output:
   html_notebook:
     df_print: paged
     fig_height: 8
     fig_width: 10
     rows.print: 10
-<<<<<<< HEAD
     toc: true
   html_document:
     df_print: paged
     toc: true
-=======
-    toc: yes
-  pdf_document:
-    toc: yes
-  html_document:
-    df_print: paged
-    toc: yes
-subtitle: Laboratorium 3 - konstruowanie modeli predykcyjnych
-email: ap.janusz@uw.edu.pl
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 ---
 
 ```{r setup, include=FALSE}
@@ -38,10 +23,6 @@ library(mlr3learners)
 library(proxy)
 library(ggplot2)
 library(plotly)
-<<<<<<< HEAD
-=======
-library(rpart)
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 ```
 
 ## Plan
@@ -57,11 +38,7 @@ Zbiór danych jest dostępny tutaj:
 https://drive.google.com/file/d/1vPazSBSVSOGq3yCKvmFqueb1AO4jfYNi/view?usp=sharing
 
 
-<<<<<<< HEAD
 ```{r data_load}
-=======
-```{r data_load, echo=TRUE}
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 # Wczytujemy dane:
 dataSet <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
                              sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
@@ -73,10 +50,6 @@ setnames(dataSet, c("diagnosis",
                           sep="_")))
 
 # wymiar danych:
-<<<<<<< HEAD
-=======
-
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 dim(dataSet)
 head(dataSet)
 
@@ -93,16 +66,6 @@ Wyjątkiem od powyższej zazady są modele leniwe takie jak k-NN.
 #### Zadanie 2 (z poprzednich zajęć):
 Stwórz własną implementację k-NN. Implementacja powinna pozwalać na wyszukiwanie sąsiadów względem dowolnej funkcji odległości. Możesz wykorzystać bibliotekę _proxy_. Oszacuj jakość predykcji algorytmu k-NN z odległością kosinusową dla danych WDBC.
 
-<<<<<<< HEAD
-
-
-```{r zabawa}
-?proxy::dist
-summary 
-```
-
-=======
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 ```{r task2}
 # metody przydatne przy tworzeniu własnych implementacji k-NN można znaleźć w bibliotece proxy
 ?proxy::dist
@@ -110,11 +73,7 @@ summary(pr_DB)
 ?pr_DB
 
 # przykładowo, możemy łatwo policzyć odległość pierwszego obiektu od pozostałych obiektów w danych:
-<<<<<<< HEAD
-dist_vector <- as.numeric(proxy::dist(dataSet[1, !"diagnosis"], dataSet[, !"diagnosis"])) #to juz da wszystkie odleglosci
-=======
 dist_vector <- as.numeric(proxy::dist(dataSet[1, !"diagnosis"], dataSet[, !"diagnosis"]))
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 # a następnie wybrać indeksy np. siedmiu sąsiadów:
 head(order(dist_vector), 7)
 # funkcja proxy::dist pozwala łatwo wyliczać inne metryki odległości:
@@ -139,23 +98,8 @@ my_knn <- function(ref_data, test_data, rev_classes, k = 7, metric = "Euclidean"
   apply(dist_matrix, 1, vote, rev_classes, k)
 }
 
-<<<<<<< HEAD
 # sprawdź, że powyższa funkcja rzeczywiście działa
 
-my_knn(dataSet[-1, !"diagnosis"], dataSet[1, ], )
-
-=======
-#moje
-x <- my_knn(dataSet[-c(1:15), !"diagnosis"], dataSet[c(1:15), !"diagnosis"], dataSet[-c(1:15), "diagnosis"])
-y <- dataSet[c(1:15), diagnosis]
-x
-y
-dataSet[1:3, diagnosis]  #cos istotnego
-#moje
-mean(as.character(x) == as.character(y))
-# sprawdź, że powyższa funkcja rzeczywiście działa
-
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 ```
 
 ## MLR3 - podstawy
@@ -170,11 +114,6 @@ Wiele nowoczesnych rozwiązań z zakresu uczenia maszynowego bazuje na obiektowy
 # definiujemy nowe zadanie predykcji
 wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
                              target = "diagnosis")
-
-<<<<<<< HEAD
-
-=======
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 wdbc_task
 
 # definiujemy znany już nam model z biblioteki kknn
@@ -211,10 +150,6 @@ prediction$score(measure_bac)
 prediction$score(measures)
 
 # możemy też łatwo policzyć weryfikację krzyżową
-<<<<<<< HEAD
-=======
-?resample
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 CV <- rsmp("cv", folds = 10L)
 rr <- resample(wdbc_task, knn_learner, CV)
 rr$score(measures)
@@ -233,13 +168,8 @@ tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
 tree_learner$param_set
 
 # trenowanie i ewaluacja
-<<<<<<< HEAD
 tree_learner$train(wdbc_task, row_ids = train_set)
 prediction <- tree_learner$predict(wdbc_task, row_ids = test_set)
-=======
-tree_learner$train(wdbc_task, row_ids = training_set_idxs)
-prediction <- tree_learner$predict(wdbc_task, row_ids = test_set_idxs)
->>>>>>> c98ede0d9291070b52ccf5af016c84c97d6a1103
 prediction$score(measures)
 
 # model
@@ -254,38 +184,6 @@ Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jak
 
 ```{r task1}
 # to jest miejsce na rozwiazanie zadania 1:
-wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
-                             target = "diagnosis")
-knn_learner <- lrn("classif.kknn", k = 29)
-training_set_idxs <- sort(sample(nrow(dataSet), floor(nrow(dataSet)*0.7)))
-
-=======
-bootstrap <- rsmp("bootstrap")
-rr <- resample(wdbc_task, knn_learner, bootstrap)
-rr$score(measures)
-
-rr$aggregate(measures)
-
-holdout <- rsmp("holdout")
-rr <- resample(wdbc_task, knn_learner, holdout)
-rr$score(measures)
-
-rr$aggregate(measures)
-
-bootstrap <- rsmp("bootstrap")
-rr <- resample(wdbc_task, tree_learner, bootstrap)
-rr$score(measures)
-
-rr$aggregate(measures)
-
-holdout <- rsmp("holdout")
-rr <- resample(wdbc_task, tree_learner, holdout)
-rr$score(measures)
-
-rr$aggregate(measures)
-
-
-```
 
 
 ```
