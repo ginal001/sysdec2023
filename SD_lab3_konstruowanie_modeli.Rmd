@@ -184,7 +184,37 @@ Wybierz dwa z dostępnych modeli (np. k-NN i drzewo decyzyjne) i oszacuj ich jak
 
 ```{r task1}
 # to jest miejsce na rozwiazanie zadania 1:
+wdbc_task <- TaskClassif$new(id = "wdbc_train", backend = dataSet, 
+                             target = "diagnosis")
+knn_learner <- lrn("classif.kknn", k = 29)
+training_set_idxs <- sort(sample(nrow(dataSet), floor(nrow(dataSet)*0.7)))
 
+bootstrap <- rsmp("bootstrap")
+rr <- resample(wdbc_task, knn_learner, bootstrap)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+holdout <- rsmp("holdout")
+rr <- resample(wdbc_task, knn_learner, holdout)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+bootstrap <- rsmp("bootstrap")
+rr <- resample(wdbc_task, tree_learner, bootstrap)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+holdout <- rsmp("holdout")
+rr <- resample(wdbc_task, tree_learner, holdout)
+rr$score(measures)
+
+rr$aggregate(measures)
+
+
+```
 
 ```
 
