@@ -117,6 +117,8 @@ trainingIdx = sample(nrow(data_wdbc), round(3*(nrow(data_wdbc)/5)))
 # definiujemy nowe zadanie predykcji
 wdbc_task <- TaskClassif$new(id = "wdbc_dt", backend = data_wdbc, 
                              target = "diagnosis")
+
+
 ```
 
 ```{r glm-mlr}
@@ -158,14 +160,15 @@ Jednym z najbardziej powszechnie stosowanym modelem predykcyjnym jest __drzewo d
 
 ```{r tree-mlr}
 tree_learner <- lrn("classif.rpart", cp = 0.01, minsplit = 5)
-tree_learner$param_set
 
 # trenowanie i ewaluacja
 tree_learner$train(wdbc_task, row_ids = trainingIdx)
 prediction <- tree_learner$predict(wdbc_task, row_ids = setdiff(1:nrow(data_wdbc), trainingIdx))
 prediction$confusion
 acc <- msr("classif.acc")
-prediction$score(acc)
+CV <- rsmp("cv", folds = 10L)
+rr <- resample(wdbc_task, tree_learner, CV)
+rr$score(acc)
 
 # model
 tree_learner$model
@@ -179,7 +182,43 @@ Proszę spróbować znaleźć optymalne wartości hiperparametrów omówionych d
 
 ```{r task}
 # to jest miejsce na rozwiazanie zadania:
+tree_learner_optimised <- lrn("classif.rpart")
+tree_learner_optimised$param_set
 
+tree_learner_optimised$param_set$values <- list(cp = to_tune(0, 0.5), minsplit = to_tune(1, 100))
+instance = ti(
+  task = wdbc_task,
+  learner = tree_learner_optimised,
+  resampling = rsmp("cv", folds = 10L),
+  measures = msr("classif.acc"),
+  terminator = trm("none")
+)
+instance
+
+tuner = tnr("grid_search", resolution = 5)
+
+tuner$optimize(instance)
+
+tree_learner_optimised$param_set$values = instance$result_learner_param_vals
+tree_learner_optimised$wdbc_data
+
+tree_learner_optimised$train(wdbc_task, row_ids = trainingIdx)
+prediction <- tree_learner_optimised$predict(wdbc_task, row_ids = setdiff(1:nrow(data_wdbc), trainingIdx))
+prediction$confusion
+acc <- msr("classif.acc")
+prediction$score(acc)
+
+# model
+tree_learner_optimised$model
+rpart.plot(tree_learner_optimised$model, type = 2, digits = 2, tweak = 1.0, roundint=FALSE,
+           main = 'drzewo decyzyjne')
+
+
+acc <- msr("classif.acc")
+CV <- rsmp("cv", folds = 10L)
+rr <- resample(wdbc_task, tree_learner, CV)
+rr$score(acc)
+```
 
 ```
 
