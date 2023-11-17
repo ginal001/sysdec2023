@@ -1,0 +1,463 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+subtitle: "Laboratorium 5 - sieci neuronowe i SVM"
+author: Andrzej Janusz
+email: ap.janusz@uw.edu.pl
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 12
+    rows.print: 10
+    toc: true
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(nnet)
+library(neuralnet)
+library(e1071)
+library(mlbench)
+library(ggplot2)
+```
+
+## Konstrukcja perceptronu
+
+W najprostrzej wersji perceptron jest modelem neuronu. Posiada $N$ wejść, jedno wyjście i funkcję aktywacji. Z każdym wejściem stowarzyszona jest pewna waga (najcześciej przyjmująca wartości z przedziału $[-1,1]$). Dodatkowo, często dodaje się jedną wagę nie związaną z żadnym wejściem ("bias factor"). Perceptron sumuje ważone sygnały wejściowe i na wyjściu zwraca wartość funkcji aktywacji od obliczonej sumy. Funkcje aktywacji mogą być różnego typu, lecz najczęściej używa się różniczkowalnych funkcji sigmoidalnych, np. funkcji logistycznej: $$sigmoid(x) = \frac{1}{(1 + e^{-x})}$$ lub tangensa hiperbolicznego: $$tanh(x) = \frac{(e^x - e^{-x})}{(e^x + e^{-x})}$$
+
+```{r perceptron,  fig.height = 8, fig.width = 10}
+set.seed(16112023)
+
+# Prosta reprezentacja neuronu:
+createNeuron = function(nIn, activationF = e1071::sigmoid, 
+                        activationDer = e1071::dsigmoid, range = 0.1) {
+  list(weights = runif(nIn + 1, -range, range), 
+       fun = activationF, 
+       derivative = activationDer)
+}
+                         
+neuron = createNeuron(2, range = 0.5)
+e1071::dsigmoid
+neuron
+```
+
+Uczenie perceptronu - metoda gradientowa (dla funkcji straty - kwadratu błędu różnicy predykcji i 'ground truth'). Polega ona na iteracyjnym uaktualnianiu wag zgodnie z kierunkiem spadku wartości funkcji błędu i proporcjonalnie do wielkości wejścia.
+
+ - $E = 0.5*(true - pred)^2$ - blad kwadratowy
+ - $deltaW(i) = alpha*(true - pred)*f'(W * X)*X_i$, gdzie
+ - $deltaW(i)$ - uaktualnienie i-tej wagi
+ - $W$ - wektor wag neuronu
+ - $X = <X_1, ..., X_N>$ - wejscie dla neuronu
+
+```{r randomdata, fig.height = 6, fig.width = 8}
+# wygenerujmy losowy zbiorek danych 2D
+myRandomData = matrix(runif(200, -10, 10), 100)
+myCls = apply(myRandomData, 1, 
+              function(x) as.integer(c(7,-5)%*%x > 0))
+
+
+# możemy pokazać, w jaki sposób nasz perceptron dzieli dane przed uczenie:
+fig1 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() + 
+  geom_abline(intercept = -neuron$weights[3]/neuron$weights[2], 
+              slope = -neuron$weights[1]/neuron$weights[2], colour = "orange") +
+  labs(x = "X", y = "Y", title = "Wygenerowane dane oraz losowo zainicjowanym perceptronem")
+fig1
+```
+
+```{r perceptron_training, fig.height = 6, fig.width = 8}
+# implementacja prostej metody uczenia perceptronu:
+weightedSum = function(input, neuron) {
+  as.numeric(c(input,1) %*% neuron$weights)
+}
+
+compErr = function(input, target, neuron) {
+  abs(target - neuron$fun(weightedSum(input, neuron)))
+}
+
+updateWeights = function(input, target, neuron, alpha = 0.1) {
+    
+  wSum = weightedSum(input, neuron)
+  deltaW = -alpha*(target - neuron$fun(wSum))*neuron$derivative(wSum)*c(input,1)
+  neuron$weights = neuron$weights - deltaW
+    
+  neuron
+}
+```
+
+```{r training, fig.height = 6, fig.width = 8}
+# sprawdzmy czy uda nam sie wytrenowac perceptron
+endFlag = FALSE
+threshold = 0.1
+maxIterations = 100
+alpha = 0.001
+
+iteration = 1
+while(!endFlag) {
+    errVec = mapply(compErr, 
+                    split(myRandomData, 1:nrow(myRandomData)), myCls, 
+                    MoreArgs = list(neuron = neuron))
+    if(sum(errVec) < threshold || iteration > maxIterations) endFlag = T
+    else {
+        for(i in 1:nrow(myRandomData)) 
+          neuron = updateWeights(myRandomData[i,], myCls[i], neuron, alpha)
+        if(iteration <= 10 && iteration %% 2 == 1) {
+          tmp_plot <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+                        geom_point() + 
+                        geom_abline(intercept = -neuron$weights[3]/neuron$weights[2], 
+                                    slope = -neuron$weights[1]/neuron$weights[2], colour = "orange") +
+                        labs(x = "X", y = "Y", title = paste0("Iteracja: ", iteration, " wartość funkcji straty: ", sum(errVec)))
+          print(tmp_plot)
+        }
+        iteration = iteration + 1
+    }
+}
+print(sum(errVec))
+print(neuron)
+
+# mozemy teraz narysowac nasz model
+fig2 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() + 
+  geom_abline(intercept = -neuron$weights[3]/neuron$weights[2], 
+              slope = -neuron$weights[1]/neuron$weights[2], colour = "orange") +
+  labs(x = "X", y = "Y", title = "Wyuczony neuron")
+fig2
+```
+
+## Proste sieci neuronowe
+
+```{r complex_data,  fig.height = 6, fig.width = 8}
+# A co gdy decyzja jest bardziej złożona?
+myCls = apply(myRandomData, 1, function(x) return(as.integer(c(3,-1)%*%x > 0 &
+                                                             c(-1,-1)%*%x + 5 > 0 &
+                                                             c(-1,-1)%*%x - 5 < 0)))
+
+
+fig3 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  labs(x = "X", y = "Y", title = "Wygenerowane dane")
+fig3
+```
+
+Żeby nauczyć sieć neuronową bardziej skomplikowanych "kształtow" klas decyzyjnych należy połączyć pojedyncze neurony w sieć. Najczęsciej stosowanym algorytmem trenowania sieci neuronowych jest metoda wstecznej propagacji błędu.
+
+Algorytm:
+
+1. Zainicjuj sieć (losowo).
+2. Powtarzaj dla kolejnych obiektów/zbiorów (ang. batches) aż do osiągnięcia kryterium stopu:
+    - oblicz błąd klasyfikacji obiektu,
+    - oblicz uaktualnienia wag $deltaW(i)$ pomiędzy neuronem wyjściowym a i-tym neuronem ukrytym,
+    - dla wszystkich neuronów w warstwie ukrytej oblicz uaktualnienia wag $deltaW(i,j)$ miedzy i-tym neuronem a j-tym wejsciem,
+    - uaktualnij wszystkie wagi modelu.
+
+Jaką strukturę powinna mieć sieć dla tak zadanej klasy decyzyjnej?
+
+Odp: 2-3-1
+
+```{r nnet,  fig.height = 6, fig.width = 8}
+# Podstawowa implementacja (prostych) sici neuronowych w R:
+#manual: ?nnet::nnet
+
+# Mozemy zaprojektowac i wyuczyc siec neuronowa z nnet dla powyzszych danych.
+tmpMyCls = myCls
+tmpMyCls[tmpMyCls == 0] = -1
+
+
+nnetModel = nnet(myRandomData, tmpMyCls,  size = 3, 
+                 linout = TRUE, maxit = 1000, abstol = 1.0e-6, trace = FALSE)
+summary(nnetModel)
+
+fig4 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  geom_abline(intercept = -nnetModel$wts[1]/nnetModel$wts[3], 
+              slope = -nnetModel$wts[2]/nnetModel$wts[3], colour = "orange") +
+  geom_abline(intercept = -nnetModel$wts[4]/nnetModel$wts[6], 
+              slope = -nnetModel$wts[5]/nnetModel$wts[6], colour = "orange") +
+  geom_abline(intercept = -nnetModel$wts[7]/nnetModel$wts[9], 
+              slope = -nnetModel$wts[8]/nnetModel$wts[9], colour = "orange") +
+  labs(x = "X", y = "Y", title = "Wygenerowane dane")
+fig4
+
+# W celu predykcji etykiet dla nowych obiektow w nnet wykorzystuje sie metode predict.
+```
+
+```{r XOR,  fig.height = 6, fig.width = 8}
+set.seed(16112023)
+# a jak to wygląda dla jeszcze bardziej skomplikowanych danych?
+myRandomData <- matrix(rnorm(400), 200)
+colnames(myRandomData) <- c("X1", "X2")
+myCls = apply(myRandomData, 1, function(x) as.integer(all(x>0) | all(x<0)))
+
+fig5 <- ggplot(data.table(myRandomData), aes(x=X1, y=X2, colour = factor(myCls))) +
+  geom_point() +
+  labs(x = "X1", y = "X2", title = "Wygenerowane dane (uogólniony XOR)")
+fig5
+```
+
+```{r neuralnet1,  fig.height = 6, fig.width = 8}
+# Konstruowanie własnych sieci neuronowych o nieco bardziej skomplikowanej strukturze umożliwia biblioteka neuralnet
+# Biblioteka nie jest idealna i zawiera błędy - ale korzystamy z niej jedynie w celu szkoleniowym ;-)
+myDF <- data.frame(cbind(myRandomData, class = myCls))
+
+myNNet <- neuralnet(class ~.,
+                    data = myDF,
+                    hidden = c(2, 2), rep = 3,
+                    linear.output = FALSE,
+                    threshold = 0.01,
+                    stepmax = 1e+06,
+                    lifesign = "minimal",
+                    act.fct = "tanh",
+                    err.fct = "sse")
+?neuralnet
+myNNet$result.matrix
+
+sum(abs(myNNet$net.result[[which.min(myNNet$result.matrix["error", ])]] - myCls))
+mean(round(myNNet$net.result[[which.min(myNNet$result.matrix["error", ])]]) == myCls)
+```
+
+```{r neuralnet2,  fig.height = 6, fig.width = 8}
+# jak wyglada pierwsza warstwa?
+fig6 <- ggplot(data.table(myRandomData), aes(x=X1, y=X2, colour = factor(myCls))) +
+  geom_point()
+
+model_weights <- myNNet$result.matrix[, which.min(myNNet$result.matrix["error", ])]
+
+fig6 <- fig6 + geom_abline(intercept = -model_weights["Intercept.to.1layhid1"]/model_weights["X2.to.1layhid1"], 
+              slope = -model_weights["X1.to.1layhid1"]/model_weights["X2.to.1layhid1"], colour = "orange")
+fig6 <- fig6 + geom_abline(intercept = -model_weights["Intercept.to.1layhid2"]/model_weights["X2.to.1layhid2"], 
+              slope = -model_weights["X1.to.1layhid2"]/model_weights["X2.to.1layhid2"], colour = "orange")
+fig6 <- fig6 + labs(x = "X", y = "Y", title = "Dane na wejściu do pierwszej warstwy sieci")
+fig6
+```
+
+```{r neuralnet3,  fig.height = 6, fig.width = 8}
+# jak wygladają dane po wyjściu z pierwszej warstwy neuronów?
+transformX <- function(x, weights, bias) {
+  tanh(x%*%weights + bias)
+}
+
+transformedData = apply(myRandomData, 1, 
+                        function(x) c(transformX(x, model_weights[c("X1.to.1layhid1", "X2.to.1layhid1")], 
+                                                 model_weights["Intercept.to.1layhid1"]),
+                                      transformX(x, model_weights[c("X1.to.1layhid2", "X2.to.1layhid2")], 
+                                                 model_weights["Intercept.to.1layhid2"])))
+transformedData = t(transformedData)
+
+# narysujmy dane i neurony z drugiej warstwy
+fig7 <- ggplot(data.table(transformedData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point()
+
+
+fig7 <- fig7 + geom_abline(intercept = -model_weights["Intercept.to.2layhid1"]/model_weights["1layhid2.to.2layhid1"], 
+              slope = -model_weights["1layhid1.to.2layhid1"]/model_weights["1layhid2.to.2layhid1"], colour = "orange")
+fig7 <- fig7 + geom_abline(intercept = -model_weights["Intercept.to.2layhid2"]/model_weights["1layhid2.to.2layhid2"], 
+              slope = -model_weights["1layhid1.to.2layhid2"]/model_weights["1layhid2.to.2layhid2"], colour = "orange")
+fig7 <- fig7 + labs(x = "X", y = "Y", title = "Dane po wyjściu z pierwszej warstwy sieci")
+fig7
+
+# Co tu się stało?
+```
+
+## Margin classifier (definicja modelu SVM)
+
+```{r simple_data2,  fig.height = 6, fig.width = 8}
+# wygenerujmy sobie ponownie jakieś proste dane
+myRandomData = matrix(runif(60, -1, 1), 30)
+myCls = apply(myRandomData, 1, function(x) return(as.integer(c(-7,3)%*%x > 0)))
+myRandomData[myCls == 0, ] = myRandomData[myCls == 0, ] + 0.3
+
+fig8 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  labs(x = "X", y = "Y", title = "Wygenerowane proste dane")
+fig8
+```
+
+```{r perceptron_training_fun,  fig.height = 6, fig.width = 8}
+# funkcja uczaca perceptron
+trainNeuron = function(neuron, dataTab, clsVec, 
+                       alpha = 0.1, maxIterations = 100, 
+                       threshold = 0.025, printInfo = TRUE) {
+  
+  endFlag = FALSE
+  iteration = 1
+  prevErrs = Inf
+  while(!endFlag) {
+    errVec = mapply(compErr, 
+                    split(dataTab, 1:nrow(dataTab)), as.list(clsVec), 
+                    MoreArgs = list(neuron = neuron))
+    errSum = sum(errVec)
+    if(prevErrs - errSum < threshold || iteration > maxIterations) {
+      endFlag = TRUE
+    } else {
+      for(i in 1:nrow(dataTab)) 
+        neuron = updateWeights(dataTab[i,], clsVec[i], neuron, alpha)
+      if(printInfo && iteration %% 10 == 1) {
+        cat("Iteracja: ", iteration, " suma bledow: ", errSum, "\n", sep="")
+      }
+      prevErrs = errSum
+      iteration = iteration + 1
+    }
+  }
+  if(printInfo) {
+    print(sum(errVec))
+    print(neuron)
+  }
+  neuron
+}
+```
+
+```{r many_hyperplanes,  fig.height = 6, fig.width = 8}
+# stworzmy trzy perceptrony uczone z różnymi parametrami
+neuron = list(neuron1 = createNeuron(2, range = 0.2), 
+              neuron2 = createNeuron(2, range = 0.2), 
+              neuron3 = createNeuron(2, range = 0.2))
+
+alpha = c(0.1,0.5,0.9)
+
+neuron = mapply(function(perceptron, alpha, dataT, cls, maxIt, info) 
+                           trainNeuron(perceptron, dataT, cls, alpha, maxIt, printInfo = info),
+                neuron, alpha, 
+                MoreArgs = list(dataT = myRandomData, cls = myCls, maxIt = 20, info = FALSE),
+                SIMPLIFY = FALSE)
+
+# w wyniku uczenia dostajemy trzy hiperplaszczyzny:
+fig9 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  geom_abline(intercept = -neuron[[1]]$weights[3]/neuron[[1]]$weights[2], 
+              slope = -neuron[[1]]$weights[1]/neuron[[1]]$weights[2], colour = "orange") +
+  geom_abline(intercept = -neuron[[2]]$weights[3]/neuron[[2]]$weights[2], 
+              slope = -neuron[[2]]$weights[1]/neuron[[2]]$weights[2], colour = "green") +
+  geom_abline(intercept = -neuron[[3]]$weights[3]/neuron[[3]]$weights[2], 
+              slope = -neuron[[3]]$weights[1]/neuron[[3]]$weights[2], colour = "blue") +
+  labs(x = "X", y = "Y", title = "Dyskryminacja trzema modelami")
+fig9
+
+# który z powyższych modeli jest najlepszy???
+```
+
+Możemy przyjąć, że najbardziej stabilny klasyfikator będzie odpowiadał hiperpłaszczyznie, która dobrze rozróżnia punkty z różnych klas decyzyjnych i jest od tych punktów jak najbardziej oddalona.
+
+![Wizualizacja modelu SVM (obrazek wykonany przez Larhmam - Own work, CC BY-SA 4.0, https://commons.wikimedia.org/w/index.php?curid=73710028)](SVM_margin.png)
+
+Zdefiniujmy zatem zadanie optymalizacyjne:
+
+ - $u_1, \ldots, u_n$ - obiekty treningowe,
+ - $d_1, \ldots, d_n$ - binarna klasyfikacja obiektów treningowych taka, że $d_i \in {-1,1}$,
+ - $u_i * u_j$ - iloczyn skalarny (klasyczny) $u_i$ i $u_j$,
+ - $w * u - b = 0$ - równanie hiperplaszczyzny, gdzie $w$ to wektor współczynników (wag).
+
+Chcemy maksymalizować odległość między hiperpłaszczyznami $w * u - b = 1$ i $w * u - b = -1$ tak, żeby były spełnione warunki:
+
+ - $w * u_i - b \geq 1$ dla $u_i$ takich, że $d_i = 1$,
+ - $w * u_i - b \leq -1$ dla $u_i$ takich, że $d_i = -1$,
+
+czyli mamy warunek $d_i (w * u_i - b) >= 1$ dla $i = 1, \ldots, n$.
+
+Odległość pomiędzy tymi dwiema hiperpłaszczyznami wynosi $\frac{2}{||w||}$, czyli chcemy minimalizowac normę wektora $w$.
+
+Dzięki wykorzystaniu metody mnożników Lagrange-a otrzymujemy rozwiązanie:
+$$w = \sum_{i}( \alpha_i * d_i * u_i),$$
+gdzie $\alpha_i$ odpowiadają maksimum z funkcji Lagrange-a:
+$$L(\alpha) = \sum_{i}( \alpha_i ) - 1/2*\sum_{i,j}\left[ \alpha_i * \alpha_j * d_i * d_j * ( K(u_i, u_j) ) \right],$$
+z warunkami brzegowymi $\alpha_i \geq 0$ dla $i = 1, \ldots, n$ oraz $\sum_{i}( d_i*\alpha_i ) = 0$.
+
+W powyższym wzorze $K(u_i, u_j)$ jest funkcja jądrowa (ang. *kernel function*) zdefiniowaną jako $K(u_i, u_j) = u_1 * u_2$ (zwykły iloczyn skalarny). Tak zdefiniowany model nazywamy *maszyną wektorów wspierających* (ang. *support vector machine*).
+
+```{r linear_svm,  fig.height = 6, fig.width = 8}
+# ten sam model możecie wytrenować wykorzystując pakiet mlr3! (learner classif.svm)
+#manual:  ?e1071::svm 
+
+svmModel = svm(myRandomData, myCls, 
+               scale = FALSE, type = "C-classification", kernel = "linear", 
+               cost = 1000)
+# możemy również używać interfejsu przez formułę a dane moga mieć 'rzadką' reprezentację
+
+names(svmModel)
+svmModel$coefs  #czyli nasze wartości alpha_i (już pomnożone przez d_i)
+svmModel$rho    #czyli nasze przesunięcie 'b'
+svmModel$index  #indeksy wektorów wspierających w naszych danych
+svmModel$SV     #macierz wektorów wspierających
+
+# suma współczynników powinna wynosić zero:
+cat('Suma wspolczynnikow: ',
+    round(sum(svmModel$coefs), 10), '\n')
+
+# Narysujmy teraz wyuczona hiperplaszczyzne:
+w = apply((svmModel$SV) * as.numeric(svmModel$coefs),2,sum)
+
+fig10 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  geom_abline(intercept = svmModel$rho/w[2], 
+              slope = -w[1]/w[2], colour = "Blue") +
+  geom_abline(intercept = (svmModel$rho+1)/w[2], 
+              slope = -w[1]/w[2], colour = "Red", size = 1) +
+  geom_abline(intercept = (svmModel$rho-1)/w[2], 
+              slope = -w[1]/w[2], colour = "Red", size = 1) +
+  labs(x = "X", y = "Y", title = "Dyskryminacja modelem SVM")
+fig10
+```
+
+Warto zauważyć, że nasze hiperpłaszczyzny dyskryminujące mogą _opierać się_ jedynie na niewielkiej liczbie obiektów z naszych danych - jedynie dla nich odpowiadające wartości $alpha_i$ są niezerowe. Obiekty te nazywamy wektorami wspierającymi/podpierającymi.
+
+A co w sytuacji, gdy kilku obiektów nie da sie liniowo przypisać do prawidłowej klasy?
+
+Modyfikujemy problem optymalizacji przez wprowadzenie dodatkowych zmiennych odpowiadających karze za nieprawidłową klasyfikację.
+Chcemy teraz minimalizować $$Loss(w, C) = ||w|| + C*\sum_{i}( \epsilon_i ),$$ gdzie $\epsilon_i$ to kara za klasyfikację i-tego obiektu, a $C$ to stała.
+W 1995 roku Vapnik pokazał, że rozwiązanie Lagrange-a tego problemu pozostaje prawie niezmienione.
+
+Wystarczy tylko dodać warunek: $alpha_i \leq C$ dla $i = 1, \ldots, n$. W implementacji z biblioteki _e1071_ stałej $C$ odpowiada parametr _cost_.
+
+## Klasyfikacja nieliniowa modelem SVM (kernel trick):
+
+Do tej pory zakładaliśmy, że funkcja $K(u_i, u_j)$ jest zwykłym iloczynem skalarnym. A co jeśli założymy, że funkcja ta jest iloczynem skalarnym w innej przestrzeni, niż ta odpowiadająca wymiarom w naszych danych?
+
+```{r nonlinear_data,  fig.height = 6, fig.width = 8}
+# Ponownie wygenerujmy nowe dane
+myRandomData = matrix(runif(600, -1, 1), 300)
+myCls = apply(myRandomData, 1, function(x) return(as.integer(sum(x^2) > 0.5)))
+
+fig11 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  labs(x = "X", y = "Y", title = "Wygenerowane proste dane")
+fig11
+```
+
+```{r nonlinear_data_fit,  fig.height = 6, fig.width = 8}
+# Takich danych nie da się sensownie podzielić hiperpłaszczyzną w dwóch wymiarach...
+svmModel = svm(myCls~., as.data.frame(cbind(myRandomData, myCls)), 
+               type = "C-classification", kernel = "linear", cost = 1, scale = FALSE)
+
+fig12 <- ggplot(data.table(myRandomData), aes(x=V1, y=V2, colour = factor(myCls))) +
+  geom_point() +
+  geom_abline(intercept = svmModel$rho/w[2], 
+              slope = -w[1]/w[2], colour = "Blue") +
+  labs(x = "X", y = "Y", title = "Dyskryminacja modelem SVM")
+fig12
+
+# Konieczna jest zatem transformacja obiektów do przestrzeni o większym wymiarze.
+# Proszę spróbować samodzielnie zgadnąć jaka transformacja byłaby odpowiednia.
+# Proszę sprawdzić swoje rozwiązanie wyliczając SVM na nowych (przetransformowanych) danych.
+
+```
+
+W praktyce nie jest konieczne realizowanie (materializacja) takiej transformacji - do budowy modelu *SVM* potrzebujemy jedynie wartosci iloczynu skalarnego w przestrzeni **po transformacji**. Możemy zatem wykorzystać tzw. *"kernel trick"*. Funkcję $K(u_i, u_j)$ dobierzemy tak, by odpowiadała iloczynowi skalarnemu w nowej przestrzeni.
+Dzięki temu możemy w znaczący sposób obniżyć złożoność obliczeniową problemu optymalizacji.
+
+Trzy najczęściej wykorzystywane funkcje jądrowe to: *liniowa*, *wielomianowa* i *radialna* (sigmoidalna).
+
+```{r svm_plot,  fig.height = 6, fig.width = 8}
+# policzmy SVM z jądrem radialnym
+svmModel = svm(myCls~., as.data.frame(cbind(myRandomData,myCls)), 
+               type = "C-classification", kernel = "radial", cost = 100)
+
+# narysujmy model (uzyjemy metody plot)
+plot(svmModel, as.data.frame(cbind(myRandomData,myCls)))
+```
+
+### Zadanie na następne zajęcia (laboratoria):
+Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorflow.rstudio.com/installation/ 
+

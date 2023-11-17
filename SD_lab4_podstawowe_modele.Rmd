@@ -216,8 +216,9 @@ rpart.plot(tree_learner_optimised$model, type = 2, digits = 2, tweak = 1.0, roun
 
 acc <- msr("classif.acc")
 CV <- rsmp("cv", folds = 10L)
-rr <- resample(wdbc_task, tree_learner, CV)
+rr <- resample(wdbc_task, tree_learner_optimised, CV)
 rr$score(acc)
+instance$result_learner_param_vals
 ```
 
 ```
