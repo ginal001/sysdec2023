@@ -4,14 +4,14 @@ subtitle: "Laboratorium 4 - podstawowe modele predykcyjne"
 author: Andrzej Janusz
 email: ap.janusz@uw.edu.pl
 output:
+  html_document:
+    df_print: paged
+    toc: true
   html_notebook:
     df_print: paged
     fig_height: 8
     fig_width: 10
     rows.print: 10
-    toc: true
-  html_document:
-    df_print: paged
     toc: true
 ---
 

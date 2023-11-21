@@ -1,18 +1,20 @@
 ---
 title: "Systemy Decyzyjne 2023/2024"
-subtitle: "Laboratorium 5 - sieci neuronowe i SVM"
-author: Andrzej Janusz
-email: ap.janusz@uw.edu.pl
+author: "Andrzej Janusz"
 output:
+  html_document:
+    df_print: paged
+    toc: yes
   html_notebook:
     df_print: paged
     fig_height: 8
     fig_width: 12
     rows.print: 10
-    toc: true
-  html_document:
-    df_print: paged
-    toc: true
+    toc: yes
+  pdf_document:
+    toc: yes
+subtitle: Laboratorium 5 - sieci neuronowe i SVM
+email: ap.janusz@uw.edu.pl
 ---
 
 ```{r setup, include=FALSE}
@@ -23,6 +25,7 @@ library(neuralnet)
 library(e1071)
 library(mlbench)
 library(ggplot2)
+library(tensorflow)
 ```
 
 ## Konstrukcja perceptronu
@@ -41,7 +44,6 @@ createNeuron = function(nIn, activationF = e1071::sigmoid,
 }
                          
 neuron = createNeuron(2, range = 0.5)
-e1071::dsigmoid
 neuron
 ```
 
@@ -460,4 +462,17 @@ plot(svmModel, as.data.frame(cbind(myRandomData,myCls)))
 
 ### Zadanie na następne zajęcia (laboratoria):
 Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorflow.rstudio.com/installation/ 
+```{r installing}
+# install.packages("remotes")
+remotes::install_github("rstudio/tensorflow")
+
+
+install_tensorflow(envname = "r-tensorflow")
+
+install.packages("keras")
+library(keras)
+install_keras()
+library(tensorflow)
+
+```
 
