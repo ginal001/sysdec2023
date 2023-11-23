@@ -25,8 +25,8 @@ library(neuralnet)
 library(e1071)
 library(mlbench)
 library(ggplot2)
+library(remotes)
 library(tensorflow)
-library(keras)
 ```
 
 ## Konstrukcja perceptronu
@@ -465,15 +465,15 @@ plot(svmModel, as.data.frame(cbind(myRandomData,myCls)))
 Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorflow.rstudio.com/installation/ 
 ```{r installing}
 #install.packages("remotes")
-#remotes::install_github("rstudio/tensorflow")
+#remotes::install_github("rstudio/tensorflow", force = TRUE)
 #install_tensorflow(envname = "r-tensorflow")
 
 #install.packages("keras")
-library(keras)
+#library(keras)
 #install_keras()
-library(tensorflow)
-tf$constant("Hello TensorFlow!")
-is_keras_available()
-?tensorflow
+#library(tensorflow)
+#tf$constant("Hello TensorFlow!")
+#is_keras_available()
+#?tensorflow
 ```
 
