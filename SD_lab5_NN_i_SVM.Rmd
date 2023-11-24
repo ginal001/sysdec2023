@@ -18,7 +18,6 @@ email: ap.janusz@uw.edu.pl
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
 library(data.table)
 library(nnet)
 library(neuralnet)
@@ -471,9 +470,8 @@ Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorf
 #install.packages("keras")
 #library(keras)
 #install_keras()
-#library(tensorflow)
-#tf$constant("Hello TensorFlow!")
-#is_keras_available()
+tf$constant("Hello TensorFlow!")
+is_keras_available()
 #?tensorflow
 ```
 

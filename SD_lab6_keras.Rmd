@@ -1,0 +1,201 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+subtitle: "Laboratorium 6 - biblioteki do trenowania sieci neuronowych: Tensorflow i Keras"
+author: Andrzej Janusz
+email: ap.janusz@uw.edu.pl
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 12
+    rows.print: 10
+    toc: true
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(tensorflow)
+library(keras)
+library(ggplot2)
+library(ggfortify)
+library(gridExtra)
+library(tidyverse)
+library(tidyr)
+library(purrr)
+```
+
+## Klasyfikacja obrazków 
+
+Klasyfikacja obrazów to jedna z domen, w której od kilku lat niepodzielnie rządzą sieci neuronowe. Poniższe przykłady demonstrują jak proste jest konstruowanie sieci, zarówno gęstych jak i konwolucyjnych, za pomocą _Keras Sequential API_. Bazują one na tutorialach dostępnych na: https://tensorflow.rstudio.com/tutorials
+
+Wykorzystamy popularny zbiór benchmarkowy dla problemu klasyfikacji obrazów - CIFAR10.
+
+```{r fdata_load}
+# Wczytywanie danych:
+if (file.exists("cifar.RData")) {
+   load("cifar.RData")
+} else {
+  cifar <- dataset_cifar10()
+  save(cifar, file = "cifar.RData")
+}
+
+# wyodrębmy zbiór treningowy oraz testowy
+train_images <- cifar$train$x
+train_labels <- cifar$train$y
+
+dim(train_images)
+dim(train_labels)
+
+# alternatywnie, powyższą operację możemy tez zapisać jako:
+c(test_images, test_labels) %<-% cifar$test
+
+dim(test_images)
+dim(test_images)
+
+class_names <- c('airplane', 'automobile', 'bird', 'cat', 'deer',
+                 'dog', 'frog', 'horse', 'ship', 'truck')
+```
+
+```{r image plotting}
+# możemy sprawdzić, czy etykiety mają sens
+idx <- 1:20
+
+par(mfcol = c(4,5), mar = rep(1, 4), oma = rep(0.2, 4))
+train_images[idx,,,] %>% 
+  purrr::array_tree(1) %>%
+  purrr::set_names(class_names[train_labels[idx] + 1]) %>% 
+  purrr::map(as.raster, max = 255) %>%
+  purrr::iwalk(~{plot(.x); title(.y)})
+```
+
+W pierwszej kolejności, spróbujmy wytrenować klasyczną wielowarstwową gęstą sieć neuronową.
+
+```{r dense_model_definition, message=FALSE, warning=FALSE, error=FALSE}
+# Zaczniemy od przeskalowania tensorów z bitmapami, tak by zawierały wartości z przedziału [0, 1]
+train_images <- train_images / 255
+test_images <- test_images / 255
+
+# teraz możemy zdefiniować model wykorzystując Keras Sequential API
+dense_model <- keras_model_sequential()
+
+# pierwsza warstwa 'spłaszcza' obrazki, dalej mamy dwie warstwy ukryte z aktywacją 'relu' i warstwę wyjściową
+dense_model %>%
+  layer_flatten(input_shape = c(32, 32, 3)) %>%
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dense(units = 10, activation = 'softmax')
+
+summary(dense_model)
+
+# po zdefiniowaniu modelu musimy go zainicjować
+dense_model %>% compile(
+  optimizer = 'adam', 
+  loss = 'sparse_categorical_crossentropy',
+  metrics = c('accuracy')
+)
+```
+
+```{r dense_model_training}
+# zdefiniowany model należy wytrenować
+dense_model %>% fit(train_images, train_labels, 
+                    epochs = 10, 
+                    validation_data = list(test_images, test_labels),
+                    verbose = 2)
+```
+
+```{r dense_model_evaluation}
+# możemy sprawdzić jak dobrze radzi sobie model na zbiorze testowym
+dense_score <- evaluate(dense_model, test_images, test_labels, verbose = 0)
+
+cat('Test loss:', dense_score["loss"], "\n")
+cat('Test accuracy:', dense_score["accuracy"], "\n")
+
+# predykcje modelu możemy uzyskać wykorzystując metodę predict
+predictions <- predict(dense_model, test_images)
+head(predictions)
+
+which.max(predictions[1, ]) - 1
+
+# możemy też użyć metody z tensorflow by uzyskać przewidziane klasy
+class_pred <-  k_argmax(predictions)
+as.integer(class_pred[1])
+```
+
+Klasyczna gęsta sieć neuronowa nie jest w stanie uczyć się rozpoznawać wzorce mogące występować w różnych miejscach na obrazku. Rozwiązanie tego problemu jest głównym zadaniem dla konwolucyjnych sieci neuronowych (CNN).
+
+```{r conv_model_definition}
+# zdefiniujmy teraz sieć konwolucyjną wykorzystuąc częsty wzorzec - naprzemiennie ułożone warstwy konwolucyjne oraz 'pooling'
+conv_model <- keras_model_sequential(name = "conv1") 
+
+conv_model %>% 
+  layer_conv_2d(filters = 32, kernel_size = c(3,3), activation = "relu",
+                input_shape = c(32,32,3)) %>% 
+  layer_max_pooling_2d(pool_size = c(2,2)) %>% 
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>% 
+  
+  layer_conv_2d(filters = 64, kernel_size = c(3,3), activation = "relu")
+
+summary(conv_model)
+
+# następnie, dodajmy jedną gęstą warstwę ukrytą i warstwę wyjściową
+conv_model %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 16, activation = "relu") %>% 
+  layer_dense(units = 10, activation = "softmax")
+
+summary(conv_model)
+
+# inicjalizacja modelu - tak samo jak poprzednio
+conv_model %>% compile(
+  optimizer = optimizer_adam(learning_rate = 0.001),
+  loss = "sparse_categorical_crossentropy",
+  metrics = list("accuracy")
+)
+```
+
+
+```{r conv_model_training}
+# Możemy zapisać i zwizualizować przebieg procesu trenowania
+training_process <-  fit(conv_model,
+                         x = train_images, y = train_labels,
+                         epochs = 20,
+                         validation_data = list(test_images, test_labels),
+                         verbose = 2)
+```
+
+```{r conv_model_evaluation}
+plot(training_process)
+
+# ewaluacja na zbiorze testowym
+conv_score <- evaluate(conv_model, test_images, test_labels, verbose = 0)
+
+cat('Test loss:', conv_score["loss"], "\n")
+cat('Test accuracy:', conv_score["accuracy"], "\n")
+
+```
+
+Warto zauważyć, że jakość modelu konwolucyjnego jest istotnie większa od sieci gęstej mimo, że sieć konwolucyjna ma kilkukrotnie mniejszą liczbę parametrów.
+Widać także, że sieć konwolucyjna jest o wiele bardziej podatna na przeuczenie (overfitting).
+
+W praktyce, często dobrym pomysłem jest dodanie warstw regulujących wagi sieci, np. _layer\_spatial\_dropout\_2d_ oraz normalizować paczki danych przez _layer\_batch\_normalization_.
+
+## Zadanie
+
+Proszę spróbować poprawić działanie sieci konwolucyjnej przez dodanie regularyzacji oraz poeksperymentowanie z architekturą i hiperparametrami modelu.
+
+```{r task}
+# to jest miejsce na rozwiazanie zadania:
+
+
+```
+
+\  
+\  
+ 
+ 
