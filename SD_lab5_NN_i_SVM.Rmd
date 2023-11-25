@@ -472,7 +472,7 @@ Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorf
 #library(keras)
 #install_keras()
 #library(tensorflow)
-#tf$constant("Hello TensorFlow!")
+tf$constant("Hello TensorFlow!")
 #is_keras_available()
 #?tensorflow
 ```
