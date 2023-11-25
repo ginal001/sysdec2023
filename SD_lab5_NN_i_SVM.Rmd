@@ -470,14 +470,10 @@ Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorf
 #install.packages("keras")
 #library(keras)
 #install_keras()
-<<<<<<< HEAD
+
 #library(tensorflow)
 tf$constant("Hello TensorFlow!")
 #is_keras_available()
-=======
-tf$constant("Hello TensorFlow!")
-is_keras_available()
->>>>>>> ec4e2b22bd30c6e1c30445636aee9a2c7ed07fea
 #?tensorflow
 ```
 
