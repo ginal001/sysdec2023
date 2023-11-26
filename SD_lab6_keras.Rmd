@@ -26,6 +26,8 @@ library(gridExtra)
 library(tidyverse)
 library(tidyr)
 library(purrr)
+library(curl)
+library(reticulate)
 ```
 
 ## Klasyfikacja obrazków 
@@ -33,6 +35,8 @@ library(purrr)
 Klasyfikacja obrazów to jedna z domen, w której od kilku lat niepodzielnie rządzą sieci neuronowe. Poniższe przykłady demonstrują jak proste jest konstruowanie sieci, zarówno gęstych jak i konwolucyjnych, za pomocą _Keras Sequential API_. Bazują one na tutorialach dostępnych na: https://tensorflow.rstudio.com/tutorials
 
 Wykorzystamy popularny zbiór benchmarkowy dla problemu klasyfikacji obrazów - CIFAR10.
+
+
 
 ```{r fdata_load}
 # Wczytywanie danych:
@@ -42,6 +46,8 @@ if (file.exists("cifar.RData")) {
   cifar <- dataset_cifar10()
   save(cifar, file = "cifar.RData")
 }
+?load
+
 
 # wyodrębmy zbiór treningowy oraz testowy
 train_images <- cifar$train$x

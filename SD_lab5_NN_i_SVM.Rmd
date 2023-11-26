@@ -2,16 +2,16 @@
 title: "Systemy Decyzyjne 2023/2024"
 author: "Andrzej Janusz"
 output:
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
   html_notebook:
     df_print: paged
     fig_height: 8
     fig_width: 12
     rows.print: 10
-    toc: yes
-  html_document:
-    df_print: paged
-    toc: yes
-  pdf_document:
     toc: yes
 subtitle: Laboratorium 5 - sieci neuronowe i SVM
 email: ap.janusz@uw.edu.pl
@@ -26,6 +26,7 @@ library(mlbench)
 library(ggplot2)
 library(remotes)
 library(tensorflow)
+library(keras)
 ```
 
 ## Konstrukcja perceptronu
@@ -268,6 +269,7 @@ fig7
 
 ```{r simple_data2,  fig.height = 6, fig.width = 8}
 # wygenerujmy sobie ponownie jakieś proste dane
+#hejka
 myRandomData = matrix(runif(60, -1, 1), 30)
 myCls = apply(myRandomData, 1, function(x) return(as.integer(c(-7,3)%*%x > 0)))
 myRandomData[myCls == 0, ] = myRandomData[myCls == 0, ] + 0.3
@@ -465,6 +467,8 @@ Proszę o zainstalowanie bibliotek __tensorflow__ oraz __keras__ https://tensorf
 ```{r installing}
 #install.packages("remotes")
 #remotes::install_github("rstudio/tensorflow", force = TRUE)
+#install.packages("tensorflow")
+#library(tensorflow)
 #install_tensorflow(envname = "r-tensorflow")
 
 #install.packages("keras")
@@ -476,4 +480,3 @@ tf$constant("Hello TensorFlow!")
 #is_keras_available()
 #?tensorflow
 ```
-
