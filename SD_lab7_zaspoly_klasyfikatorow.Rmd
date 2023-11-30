@@ -1,0 +1,211 @@
+---
+title: "Systemy Decyzyjne 2023/2024"
+subtitle: "Laboratorium 7 - zespoły klasyfikatorów, bagging, boosting"
+author: Andrzej Janusz
+email: ap.janusz@uw.edu.pl
+output:
+  html_notebook:
+    df_print: paged
+    fig_height: 8
+    fig_width: 12
+    rows.print: 10
+    toc: true
+  html_document:
+    df_print: paged
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(ggplot2)
+library(rpart)
+library(caTools)
+```
+
+## Zespoły modeli predykcyjnych - przyklad 'motywujacy'
+
+Spróbujmy zasymulować sytuację, w której możemy stworzyć _idealny_ zespól klasyfikatórow (ang. _ensemble_).
+
+```{r example}
+set.seed(2023)
+# Załóżmy, ze wektor prawdziwych klas decyzyjnych dla naszych danych testowych to true_class
+true_class = as.integer(sample(rep(c(TRUE, FALSE), 100), 200))
+
+# Załóżmy również, że udało nam się skonstruować wiele modeli predykcyjnych, lecz żaden z nich nie jest precyzyjny. 
+
+# Predykcje naszych modeli dla przypadków testowych zapisaliśmy do listy preds_list
+prediction = function(x) {idx = sample(1:length(x), floor(length(x)/2) - 1);
+                          x[idx] = -1*(x[idx] - 1);  return(x)}
+
+preds_list = replicate(100000, prediction(true_class), simplify = FALSE)
+
+# Wartość miary "accuracy" wszystkich naszych modeli wynosi dokładnie 0.505
+summary(sapply(preds_list, function(x,y) return(mean(x == y)), true_class))
+
+# Jaki wynik otrzymamy w wyniku polaczenia wszystkich klasyfikatorow w jeden zespol?
+
+# Sprawdźmy jak nasze modele radzą sobie wspólnie - przeprowadźmy głosowanie większościowe 
+# (uśredniamy klasyfikacje):
+ensemble_preds = Reduce("+", preds_list)
+ensemble_preds = round(ensemble_preds/length(preds_list))
+
+# Z dużym prawdopodobieństwem otrzymaliśmy idealną klasyfikację (accuracy == 1.0):
+mean(ensemble_preds == true_class)
+
+#Dlaczego?
+rm(ensemble_preds, true_class, preds_list)
+```
+Otrzymaliśmy świetny wynik ponieważ predykcje poszczególnych modeli były od siebie idealnie niezależne, a prawdopodobieństwo poprawnej predykcji dla każdego z modeli było lepsze od predykcji losowej (w naszym przypadku bylo większe od $0.5$).
+
+Wniosek: techniki uczenia zespołów modeli predykcyjnych koncentrują się na tworzeniu jak najdokładniejszych, lecz za razem niezależnych od siebie modeli.
+
+## Bagging (ang. bootstrap aggregating)
+
+Bagging (tj. _bootstrap aggregating_) jest to technika polegająca na _agregowaniu_ wyników modeli wyliczonych na niezależnie wygenerowanych próbkach danych, nazywanych _bootstrap samples_. Pojedynczy _bootstrap sample_ uzyskuje się z zbioru danych o $N$ obserwacjach przez losowanie $N$ razy z powtórzeniami. W ten sposób uzyskujemy nowy zbior $N$ obserwacji, w którym znajduje się średnio okolo $63.5\%$ różnych obserwacji z oryginalnego zbioru. Ważną własnością takiej próbki jest to, ze rozkład wartości poszczególnych atrybutów pozostaje w niej niezmieniony w porównaniu do oryginalnych danych.
+
+
+```{r bagging}
+#dywersyfikację modeli możemy uzyskać przez konstruowanie ich na losowych podzbiorach danych.
+data_wdbc <- data.table::fread(file = file.path(getwd(), "wdbc.data"), header = FALSE, 
+                               sep=',', na.strings="?", stringsAsFactors = TRUE, drop = 1)
+setnames(data_wdbc, c("diagnosis",
+                      paste(c(rep("mean",10), rep("SE",10), rep("worst",10)),
+                            rep(c("radius", "texture", "perimeter", "area",
+                                  "smoothness", "compactness", "concavity",
+                                  "concave_points", "symmetry", "fractal_dimension"),3),
+                            sep="_")))
+
+true_class = data_wdbc$diagnosis
+training_idx = sample(1:nrow(data_wdbc), floor(nrow(data_wdbc)*0.67))
+```
+
+```{r}
+set.seed(2023)
+# pojedynczy model drzewa decyzyjnego
+treeM = rpart(diagnosis~., data_wdbc, subset = training_idx, cp = 0.01)
+                
+singleModelPreds = predict(treeM, data_wdbc[-training_idx,], type = "prob")[, 2]
+# AUC:
+caTools::colAUC(singleModelPreds, true_class[-training_idx])
+
+# bagged models:
+baggedTree = function(dataS, trIdx) {
+    bootstrapIdx = sample(trIdx, length(trIdx), replace=TRUE)
+    
+    rpart(diagnosis~., dataS, subset = bootstrapIdx, cp = 0.01)
+}
+
+modelList = replicate(100, baggedTree(data_wdbc, training_idx), simplify = FALSE)
+modelPreds = lapply(modelList, 
+                    function(model) predict(model, data_wdbc[-training_idx, ], type = "prob")[, 2])
+
+# Jakia jest jakość pojedynczych modeli?
+# AUC:
+aucVec = sapply(modelPreds, 
+                function(x,y) return(caTools::colAUC(x, y)), 
+                true_class[-training_idx])
+summary(aucVec)
+
+# jak jest jakość zespołu?
+ensemble_preds = Reduce("+", modelPreds)
+
+# AUC:
+caTools::colAUC(ensemble_preds, true_class[-training_idx])
+
+#Oczywiście to nie jest jedyna możliwa strategia głosowania...
+```
+
+Aby jeszcze bardziej 'urozmaicić' zbiór modeli bazowych można dodatkowo losować podzbiór atrybutów, a nawet wartości hiperparametrów modeli. Jednym z najpowszechniej stosowanych modeli predykcyjnych wykorzystujących bagging są lasy losowe (ang. _Random Forest_.)
+
+## Boosting (na przykładzie AdaBoost)
+
+Ogólna zasada: każdy obiekt treningowy posiada swoją wagę. W kolejnych iteracjach tworzy się model (np. drzewo decyzyjne) i uaktualnia się wagi obiektów, by obiekty źle klasyfikowane stawały się ważniejsze. Końcowa klasyfikacja jest ważoną sumą klasyfikacji bazowych.
+
+W algorytmie AdaBoost uaktualnienie wag obiektów następuje według wzoru:
+$$W_{tmp}^{(i)} = W_{old}^{(i)} * e^{(-W_{model} * Cls^{(i)} * Pred^{(i)})},$$
+$$W_{new}^{(i)} = \frac{W_{tmp}^{(i)}}{\sum_{j = 1}^{N} W_{tmp}^{(j)}},$$
+gdzie $N$ to liczba obserwacji w danych, $i = 1, \ldots, N$, $W_{old}^{(i)}$ to waga $i$-tego obiektu z poprzedniej iteracji, $Cls^{(i)}$ to jego klasa decyzyjna, $Pred^{(i)}$ to predykcja modelu dla $i$-tej obserwacji, a $W_{model}$ to waga modelu. Obliczana jest ona jako połowa wartości funkcji _logit_ prawdopodobieństwa poprawnej predykcji:
+$$W_{model} = logit\left(E(acc)\right) = \frac{1}{2} log\left(\frac{1 - E(err)}{E(err)}\right).$$
+
+```{r boosting}
+# Przykład prymitywnej implementacji AdaBoost (wykładniczej aktualizacji wag) dla drzewa decyzyjnego:
+boostedTree = function(dataS, trIdx, N = 100, infinityThreshold = 100) {
+  weightsVec = rep(1/nrow(dataS), nrow(dataS))
+  boostingModelList = list()
+  boostingModelWeights = numeric()
+  
+  # zamieniam klasę decyzyjną na wartości {0,1}
+  clsVec = (as.integer(dataS$diagnosis) - 1)[trIdx]
+  
+  for(i in 1:N) {
+    # tworzę nowy model i obliczam predykcje na zbiorze treningowym
+    boostingModelList[[i]] = rpart(diagnosis~., dataS, subset = trIdx, 
+                                   weights = weightsVec, cp = 0.01)
+    tmpPreds = predict(boostingModelList[[i]], dataS[trIdx, ], type="class")
+    tmpPreds = as.integer(tmpPreds) - 1
+    
+    # obliczam wartość oczekiwaną błędu
+    expErr = weightsVec[trIdx] %*% as.integer(tmpPreds != clsVec)
+    if(expErr > 0)  {
+      # ustalam wagę modelu
+      boostingModelWeights[i] = 0.5*log((1-expErr)/expErr)
+      # oraz nowe wagi obiektów w danych
+      updateExpVec = weightsVec[trIdx] * 
+                     exp(-boostingModelWeights[i] * ((2*clsVec-1) * (2*tmpPreds-1)))
+      weightsVec[trIdx] = updateExpVec/sum(updateExpVec)
+    } else break
+  }
+  if(length(boostingModelList) > length(boostingModelWeights))
+    boostingModelWeights[length(boostingModelWeights)+1] = infinityThreshold
+  
+  # tworzę obiekt klasy boostedTree
+  model = list(models = boostingModelList, weights = boostingModelWeights)
+  class(model) = 'boostedTree'
+  return(model)
+}
+
+# definicja funkcji predict dla naszego modelu:
+predict.boostedTree = function(modelList, newData)  {
+  predsList = lapply(modelList$models, 
+                     function(model) {
+                       preds = predict(model, newData, type = "class");
+                       as.integer(preds) - 1
+                     })
+  ensemblePreds = numeric(nrow(newData))
+  for(i in 1:length(modelList$models))
+    ensemblePreds = ensemblePreds + ((2*as.numeric(predsList[[i]])-1) * modelList$weights[i])
+  return(ensemblePreds)
+}
+```
+
+```{r experiment_boosting}
+# sprawdźmy jak skuteczny jest nasz model:
+boostingModelList = boostedTree(data_wdbc, training_idx, N = 150)
+
+boostedPreds = predict(boostingModelList, data_wdbc[-training_idx,])
+caTools::colAUC(boostedPreds, true_class[-training_idx])
+
+# przy czym na zbiorze treningowym mamy:
+trainingPreds = predict(boostingModelList, data_wdbc[training_idx,])
+caTools::colAUC(trainingPreds, true_class[training_idx])
+```
+
+Najważniejsze implementacje zespołów klasyfikatorów w R:
+
+  1. Lasy losowe - biblioteki _randomForest_, _ranger_ (dostępna również w _mlr3_).
+  2. Generalized Boosting Models - biblioteka _gbm_.
+  3. Bardziej wydajna implementacja boostingu na drzewach lub regresji logistycznej - pakiet _xgboost_ (dostępna również w _mlr3_), pakiet _lightgbm_, pakiet _catboost_.
+  4. Klasyczny AdaBoost na drzewach decyzyjnych - pakiet _C50_.
+  
+#### Zadanie: 
+Wykorzystaj wybrane biblioteki do porównania różnych algorytmów tworzenia zespołów klasyfikatorów (np. lasy losowe i XGBoost) na wybranym zbiorze danych. Zwróć uwagę na różnice dotyczące przygotowania danych dla różnych modeli. Zastanów się, które z hiperparametrów modeli mają największy wpływ na ich jakość?
+
+```{r task1}
+# to jest miejsce na rozwiazanie zadania 1:
+
+rm(list = ls())
+```
+
+
